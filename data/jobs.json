@@ -1,0 +1,293 @@
+[
+  {
+    "id": "J001",
+    "atsId": "ATS-8842",
+    "title": "Senior Backend Engineer",
+    "client": "Acme Corp",
+    "industry": "Fintech",
+    "location": "Remote",
+    "status": "open",
+    "priority": "high",
+    "salary": "$140k–$180k",
+    "hiringManager": "Jane Doe",
+    "description": "Build scalable backend services for our payments platform.",
+    "requirements": ["Python", "AWS", "PostgreSQL", "Microservices"],
+    "primaryRecruiter": "Demo Presenter",
+    "createdAt": "2024-11-01",
+    "postingDate": "2024-11-01",
+    "postingDateRaw": "2024-11-01T09:00:00",
+    "versionLog": [
+      {
+        "type": "job_posted",
+        "action": "Job Posted",
+        "time": "2024-11-01T09:00:00",
+        "user": "",
+        "detail": "Job posting created"
+      },
+      {
+        "type": "job_primary_recruiter_assigned",
+        "action": "Primary Recruiter Assigned",
+        "time": "2024-11-01T09:05:00",
+        "to": "Demo Presenter"
+      },
+      {
+        "type": "job_recruiter_assigned",
+        "action": "Recruiter Assigned",
+        "time": "2024-11-01T09:06:00",
+        "to": "Sarah Kim"
+      },
+      {
+        "type": "job_sales_assigned",
+        "action": "Primary Sales Assigned",
+        "time": "2024-11-01T09:07:00",
+        "to": "Navya Shree B"
+      },
+      {
+        "type": "job_role_assigned",
+        "action": "Account Manager Assigned",
+        "time": "2024-11-01T09:08:00",
+        "to": "Abdul Razzak",
+        "detail": "Account Manager"
+      },
+      {
+        "type": "job_priority_changed",
+        "action": "Priority Changed",
+        "time": "2024-11-04T11:30:00",
+        "user": "Demo Presenter",
+        "from": "medium",
+        "to": "high"
+      },
+      {
+        "type": "job_rate_changed",
+        "action": "Rate Updated",
+        "time": "2024-11-06T14:00:00",
+        "user": "Demo Presenter",
+        "detail": "Pay Rate Min: $68 → $72 · Pay Rate Max: $75 → $80"
+      },
+      {
+        "type": "job_openings_changed",
+        "action": "Openings Updated",
+        "time": "2024-11-08T10:15:00",
+        "user": "Demo Presenter",
+        "from": "1",
+        "to": "2"
+      },
+      {
+        "type": "job_status_changed",
+        "action": "Status Changed",
+        "time": "2024-11-15T08:00:00",
+        "user": "Demo Presenter",
+        "from": "Open",
+        "to": "On Hold",
+        "detail": "Previous status held for 2 wks"
+      },
+      {
+        "type": "job_reopened",
+        "action": "Job Reopened",
+        "time": "2024-11-22T09:00:00",
+        "user": "Demo Presenter",
+        "from": "On Hold",
+        "to": "Open",
+        "detail": "Previous status held for 7 days"
+      },
+      {
+        "type": "job_title_changed",
+        "action": "Title Changed",
+        "time": "2024-11-25T16:20:00",
+        "user": "Demo Presenter",
+        "from": "Backend Engineer",
+        "to": "Senior Backend Engineer"
+      },
+      {
+        "type": "job_dates_changed",
+        "action": "Start Date Changed",
+        "time": "2024-11-28T11:00:00",
+        "user": "Demo Presenter",
+        "from": "12/1/2024",
+        "to": "1/6/2025"
+      },
+      {
+        "type": "job_primary_recruiter_changed",
+        "action": "Primary Recruiter Changed",
+        "time": "2024-12-02T09:30:00",
+        "from": "Sarah Kim",
+        "to": "Demo Presenter"
+      }
+    ]
+  },
+  {
+    "id": "J002",
+    "atsId": "ATS-8843",
+    "title": "Product Manager – Growth",
+    "client": "Globex Inc",
+    "industry": "SaaS",
+    "location": "New York, NY",
+    "status": "open",
+    "priority": "medium",
+    "salary": "$130k–$160k",
+    "hiringManager": "Alan Wu",
+    "description": "Lead growth initiatives for our B2B SaaS product.",
+    "requirements": ["B2B SaaS", "SQL", "A/B Testing"],
+    "primaryRecruiter": "Demo Presenter",
+    "createdAt": "2024-11-05",
+    "postingDate": "2024-11-05",
+    "postingDateRaw": "2024-11-05T10:00:00",
+    "versionLog": [
+      {
+        "type": "job_posted",
+        "action": "Job Posted",
+        "time": "2024-11-05T10:00:00",
+        "detail": "Job posting created"
+      },
+      {
+        "type": "job_primary_recruiter_assigned",
+        "action": "Primary Recruiter Assigned",
+        "time": "2024-11-05T10:10:00",
+        "to": "Demo Presenter"
+      },
+      {
+        "type": "job_recruiter_assigned",
+        "action": "Recruiter Assigned",
+        "time": "2024-11-05T10:12:00",
+        "to": "Shashwat Sharma"
+      },
+      {
+        "type": "job_role_assigned",
+        "action": "Delivery Manager Assigned",
+        "time": "2024-11-05T10:14:00",
+        "to": "Mohammed Imran",
+        "detail": "Delivery Manager"
+      },
+      {
+        "type": "job_rate_changed",
+        "action": "Rate Updated",
+        "time": "2024-11-10T15:45:00",
+        "user": "Demo Presenter",
+        "detail": "Bill Rate Min: $90 → $95 · Bill Rate Max: $100 → $110"
+      },
+      {
+        "type": "job_status_changed",
+        "action": "Status Changed",
+        "time": "2024-11-20T09:00:00",
+        "from": "Open",
+        "to": "On Hold",
+        "detail": "Previous status held for 15 days"
+      },
+      {
+        "type": "job_reopened",
+        "action": "Job Reopened",
+        "time": "2024-11-27T09:00:00",
+        "from": "On Hold",
+        "to": "Open",
+        "detail": "Previous status held for 7 days"
+      }
+    ]
+  },
+  {
+    "id": "J003",
+    "atsId": "ATS-8844",
+    "title": "DevOps Engineer",
+    "client": "Initech",
+    "industry": "Healthcare",
+    "location": "Austin, TX",
+    "status": "open",
+    "priority": "medium",
+    "salary": "$120k–$150k",
+    "hiringManager": "Rachel Green",
+    "description": "Build and maintain CI/CD pipelines.",
+    "requirements": ["Kubernetes", "Terraform", "AWS"],
+    "primaryRecruiter": "Demo Presenter",
+    "createdAt": "2024-10-28",
+    "postingDate": "2024-10-28",
+    "postingDateRaw": "2024-10-28T08:30:00",
+    "versionLog": [
+      {
+        "type": "job_posted",
+        "action": "Job Posted",
+        "time": "2024-10-28T08:30:00",
+        "detail": "Job posting created"
+      },
+      {
+        "type": "job_primary_recruiter_assigned",
+        "action": "Primary Recruiter Assigned",
+        "time": "2024-10-28T08:35:00",
+        "to": "Demo Presenter"
+      },
+      {
+        "type": "job_sales_assigned",
+        "action": "Primary Sales Assigned",
+        "time": "2024-10-28T08:36:00",
+        "to": "Navya Shree B"
+      },
+      {
+        "type": "job_role_assigned",
+        "action": "Recruitment Manager Assigned",
+        "time": "2024-10-28T08:37:00",
+        "to": "Shashwat Sharma",
+        "detail": "Recruitment Manager"
+      },
+      {
+        "type": "job_title_changed",
+        "action": "Title Changed",
+        "time": "2024-10-30T14:00:00",
+        "user": "Demo Presenter",
+        "from": "Infrastructure Engineer",
+        "to": "DevOps Engineer"
+      },
+      {
+        "type": "job_priority_changed",
+        "action": "Priority Changed",
+        "time": "2024-11-01T09:00:00",
+        "user": "Demo Presenter",
+        "from": "low",
+        "to": "medium"
+      },
+      {
+        "type": "job_openings_changed",
+        "action": "Openings Updated",
+        "time": "2024-11-03T11:30:00",
+        "user": "Demo Presenter",
+        "from": "1",
+        "to": "3"
+      },
+      {
+        "type": "job_dates_changed",
+        "action": "End Date Changed",
+        "time": "2024-11-06T10:00:00",
+        "user": "Demo Presenter",
+        "from": "3/31/2025",
+        "to": "6/30/2025"
+      },
+      {
+        "type": "job_rate_changed",
+        "action": "Rate Updated",
+        "time": "2024-11-08T13:00:00",
+        "user": "Demo Presenter",
+        "detail": "Pay Rate Min: $55 → $58 · Bill Rate Min: $80 → $85 · Bill Rate Max: $90 → $95"
+      },
+      {
+        "type": "job_status_changed",
+        "action": "Status Changed",
+        "time": "2024-11-12T08:00:00",
+        "from": "Open",
+        "to": "On Hold",
+        "detail": "Previous status held for 15 days"
+      },
+      {
+        "type": "job_reopened",
+        "action": "Job Reopened",
+        "time": "2024-11-19T08:00:00",
+        "from": "On Hold",
+        "to": "Open",
+        "detail": "Previous status held for 7 days"
+      },
+      {
+        "type": "job_primary_recruiter_changed",
+        "action": "Primary Recruiter Changed",
+        "time": "2024-11-21T10:00:00",
+        "from": "Sarah Kim",
+        "to": "Demo Presenter"
+      }
+    ]
+  }
+]

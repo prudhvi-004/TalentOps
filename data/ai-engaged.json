@@ -1,0 +1,81 @@
+[
+  {
+    "id": "AI001",
+    "jobId": "J001",
+    "aiJobId": "J001",
+    "aiCategory": "Applicant",
+    "name": "Alex Rivera",
+    "email": "alex@example.com",
+    "phone": "+1-555-0201",
+    "location": "Austin, TX",
+    "city": "Austin",
+    "state": "TX",
+    "experience": 6,
+    "skills": ["Python", "AWS", "Kubernetes", "Redis"],
+    "education": "BS CS — UT Austin",
+    "certifications": ["AWS Solutions Architect"],
+    "profile": "Full-stack engineer with DevOps experience. Strong Python background.",
+    "resume": "ALEX RIVERA\nSoftware Engineer\n\nDell Technologies — Engineer (2021–Present)\n- Python microservices\n- AWS infrastructure\n\nEDUCATION\nBS CS — UT Austin",
+    "aiStage": "evaluated",
+    "aiStageLabel": "Evaluated — Awaiting Recruiter Review",
+    "aiHistory": [
+      { "time": "2024-11-10T09:00:00Z", "event": "Shortlisted by AI based on job requirements" },
+      { "time": "2024-11-10T10:30:00Z", "event": "1st AI call attempted — no answer, voicemail left" },
+      { "time": "2024-11-11T11:00:00Z", "event": "2nd AI call — connected, 14 min conversation" },
+      { "time": "2024-11-12T09:00:00Z", "event": "Evaluation complete — Strong Match 84%" }
+    ],
+    "type": "ai"
+  },
+  {
+    "id": "AI002",
+    "jobId": "J001",
+    "aiJobId": "J001",
+    "aiCategory": "Candidate",
+    "name": "Jordan Lee",
+    "email": "jordan@example.com",
+    "phone": "+1-555-0202",
+    "location": "Remote",
+    "city": "Chicago",
+    "state": "IL",
+    "experience": 5,
+    "skills": ["Python", "Django", "PostgreSQL", "Docker"],
+    "education": "BS CS — Illinois Tech",
+    "certifications": ["GCP Professional"],
+    "profile": "Backend engineer open to remote roles. Interested in fintech.",
+    "resume": "JORDAN LEE\nBackend Engineer\n\nAccenture — Engineer (2020–Present)\n- Django REST APIs\n- PostgreSQL optimization\n\nEDUCATION\nBS CS — Illinois Tech",
+    "aiStage": "email_sent",
+    "aiStageLabel": "Email Sent — Awaiting Response",
+    "aiHistory": [
+      { "time": "2024-11-09T14:00:00Z", "event": "Shortlisted by AI" },
+      { "time": "2024-11-09T15:00:00Z", "event": "Introduction email sent via AI" },
+      { "time": "2024-11-10T15:00:00Z", "event": "Follow-up email sent — no response yet" }
+    ],
+    "type": "ai"
+  },
+  {
+    "id": "AI003",
+    "jobId": "J002",
+    "aiJobId": "J002",
+    "aiCategory": "Applicant",
+    "name": "Sam Patel",
+    "email": "sam@example.com",
+    "phone": "+1-555-0203",
+    "location": "Chicago, IL",
+    "city": "Chicago",
+    "state": "IL",
+    "experience": 4,
+    "skills": ["SQL", "Analytics", "B2B SaaS", "Product"],
+    "education": "MBA — Northwestern Kellogg",
+    "certifications": ["Certified Scrum Product Owner"],
+    "profile": "Growth-focused PM with SaaS background. Previously doubled ARR.",
+    "resume": "SAM PATEL\nProduct Manager\n\nHubSpot — PM (2022–Present)\n- Led growth experiments\n- Doubled trial-to-paid conversion\n\nEDUCATION\nMBA — Northwestern Kellogg",
+    "aiStage": "1st_call_fail",
+    "aiStageLabel": "1st Call Failed → 2nd Attempt Scheduled",
+    "aiHistory": [
+      { "time": "2024-11-08T10:00:00Z", "event": "Shortlisted by AI for Product Manager role" },
+      { "time": "2024-11-08T11:00:00Z", "event": "1st AI call — went to voicemail" },
+      { "time": "2024-11-09T10:00:00Z", "event": "2nd attempt scheduled for 2024-11-13" }
+    ],
+    "type": "ai"
+  }
+]

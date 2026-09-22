@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <!--
+    MAIN APP SHELL — index.html
+    ============================
+    Purpose:
+      Single HTML file that hosts the entire application.
+      Navigation between pages happens WITHOUT full page reloads.
+      JavaScript (app.js) reads the URL and renders the correct
+      page content inside <div id="content">.
+
+    How routing works:
+      User clicks "Jobs" in sidebar
+      → app.js changes window.location or catches click
+      → app.js renders jobs.js content into #content
+      → URL updates to /jobs (looks like a real page)
+
+    Adding a new page:
+      1. Create public/js/pages/mypage.js
+      2. Export a render(container) function from it
+      3. Add a route in public/js/app.js router switch
+      4. Add a nav item in the sidebar below
+  -->
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>TalentOps — Recruitment Operations</title>
+  <link rel="stylesheet" href="/css/main.css"/>
+</head>
+<body>
+
+<div class="app" id="app">
+
+  <!-- ======================================================
+       TOP BAR
+       Always visible. Contains logo, search, user info.
+  ====================================================== -->
+  <header class="topbar">
+
+    <!-- Logo -->
+    <div class="logo">
+      <div class="logo-icon">T</div>
+      <span class="logo-text">TalentOps</span>
+    </div>
+
+    <!-- Global Search -->
+    <div class="search-box">
+      <span class="search-icon">🔍</span>
+      <input
+        type="text"
+        id="searchInput"
+        placeholder="Search jobs, candidates... (Ctrl+K)"
+      />
+    </div>
+
+    <!-- Right side actions -->
+    <div class="topbar-actions">
+
+      <!-- ATS Connection Status -->
+      <div class="ats-status" id="atsStatus" title="ATS Connection Status">
+        <span class="ats-dot"></span>
+        <span id="atsStatusText">ATS Live</span>
+      </div>
+
+      <!-- Notification Bell -->
+      <button class="icon-btn notif-trigger" id="notifBtn" title="Notifications">
+        🔔
+        <!-- Badge shows count of unread/failed notifications -->
+        <span class="notif-badge" id="notifBadge" style="display:none">0</span>
+      </button>
+
+      <!-- Theme Toggle -->
+      <button class="icon-btn" id="themeToggle" title="Toggle Theme">🌙</button>
+
+      <!-- User chip -->
+      <div class="user-chip">
+        <div class="avatar" id="userAvatar">D</div>
+        <span class="user-chip-name" id="userName">Demo User</span>
+        <!-- Logout -->
+        <a href="/logout" class="icon-btn" title="Logout" style="text-decoration:none">↪</a>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- ======================================================
+       MAIN AREA (Sidebar + Content)
+  ====================================================== -->
+  <div class="main" id="mainArea">
+
+    <!-- Sidebar overlay — visible when sidebar is expanded on mobile -->
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <!-- ==================================================
+         SIDEBAR NAVIGATION
+    ================================================== -->
+    <aside class="sidebar" id="sidebarEl">
+
+      <!-- Toggle collapse button -->
+      <button class="sidebar-toggle" id="sidebarToggle">☰ Menu</button>
+
+      <!-- Nav items — rendered by app.js based on role -->
+      <nav id="navList"></nav>
+
+    </aside>
+
+    <!-- ==================================================
+         MAIN CONTENT AREA
+         All page content renders here.
+         Each page JS file writes into this element.
+    ================================================== -->
+    <main class="content" id="content">
+      <!-- Page content injected here by JavaScript -->
+      <div class="loading-screen">
+        <div class="loading-spinner"></div>
+        <p>Loading TalentOps...</p>
+      </div>
+    </main>
+
+  </div><!-- end .main -->
+
+</div><!-- end .app -->
+
+<!-- ======================================================
+     NOTIFICATION PANEL
+     Slides in from right when bell icon clicked.
+     Populated by app.js notification system.
+====================================================== -->
+<div class="notif-panel" id="notifPanel">
+  <div class="notif-header">
+    <span>🔔 Notifications</span>
+    <button class="icon-btn" id="closeNotif">✕</button>
+  </div>
+  <div class="notif-body" id="notifBody">
+    <p class="notif-empty">No notifications</p>
+  </div>
+</div>
+
+<!-- ======================================================
+     GLOBAL MODAL
+     Reused for all modal dialogs throughout the app.
+     Content injected dynamically by page scripts.
+====================================================== -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal" id="mainModal">
+    <div class="modal-header">
+      <h2 id="modalTitle"></h2>
+      <button class="icon-btn" id="modalClose">✕</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+    <div class="modal-footer" id="modalFooter"></div>
+  </div>
+</div>
+
+<!-- ======================================================
+     TOAST NOTIFICATION
+     Small popup for quick feedback messages.
+     Use: window.showToast('Your message here')
+====================================================== -->
+<div class="toast" id="toast"></div>
+
+<!-- ======================================================
+     JAVASCRIPT — Load order matters
+     1. api.service.js  — fetch helpers (loaded first)
+     2. app.js          — router + navigation (loaded second)
+     3. Page scripts are loaded dynamically by app.js
+====================================================== -->
+<script src="/js/services/api.service.js"></script>
+<script src="/js/app.js"></script>
+
+</body>
+</html>

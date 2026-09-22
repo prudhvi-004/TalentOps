@@ -1,0 +1,130 @@
+﻿[
+    {
+        "id":  "C001",
+        "jobId":  "J001",
+        "name":  "Emma Wilson",
+        "email":  "emma@example.com",
+        "phone":  "+1-555-0101",
+        "location":  "Remote",
+        "city":  "San Francisco",
+        "state":  "CA",
+        "experience":  7,
+        "skills":  [
+                       "Python",
+                       "AWS",
+                       "PostgreSQL",
+                       "Microservices",
+                       "Docker"
+                   ],
+        "education":  "MS CS — Stanford",
+        "certifications":  [
+                               "AWS SA Pro",
+                               "CKA"
+                           ],
+        "profile":  "Senior engineer at a fintech unicorn. Led migration to microservices.",
+        "resume":  "EMMA WILSON\nSenior Software Engineer\n\nStripe Inc — Senior Engineer (2020–Present)\n- Led microservices migration\n- Payment reconciliation service (99.99% SLA)\n\nEDUCATION\nMS CS — Stanford (2017)",
+        "type":  "pipeline",
+        "notes":  [
+                      {
+                          "NOTEID":  "N001",
+                          "ACTIONTYPE":  "Rec – Sense AI",
+                          "NOTE":  "Candidate Aligns with the Role – Emma has strong Python and AWS experience with 7 years in fintech. Led microservices migration at Stripe. Excellent fit for the senior engineer role.",
+                          "USERNAME":  "jsmith",
+                          "ACTIONDATE":  "2026-08-15T14:32:00",
+                          "JOBID":  "J001"
+                      },
+                      {
+                          "NOTEID":  "N002",
+                          "ACTIONTYPE":  "Rec – Outbound",
+                          "NOTE":  "Reached out via LinkedIn. Candidate is open to new opportunities. Interested in the role but wants to discuss remote flexibility. Follow-up scheduled for next week.",
+                          "USERNAME":  "jsmith",
+                          "ACTIONDATE":  "2026-08-10T09:15:00",
+                          "JOBID":  "J001"
+                      },
+                      {
+                          "NOTEID":  "N003",
+                          "ACTIONTYPE":  "Rec – Engaged",
+                          "NOTE":  "Had 30-minute intro call. Emma is actively looking. Current comp is . Expecting + for a new role. Strong communication skills. Moving forward to technical screen.",
+                          "USERNAME":  "alee",
+                          "ACTIONDATE":  "2026-08-05T16:00:00",
+                          "JOBID":  "J001"
+                      }
+                  ]
+    },
+    {
+        "id":  "C002",
+        "jobId":  "J001",
+        "name":  "Liam Brown",
+        "email":  "liam@example.com",
+        "phone":  "+1-555-0102",
+        "location":  "NYC",
+        "city":  "New York",
+        "state":  "NY",
+        "experience":  5,
+        "skills":  [
+                       "Python",
+                       "Django",
+                       "PostgreSQL",
+                       "Redis"
+                   ],
+        "education":  "BS Computer Engineering — NYU",
+        "certifications":  [
+                               "AWS Developer Associate"
+                           ],
+        "profile":  "Backend engineer with strong Django expertise at a Series C startup.",
+        "resume":  "LIAM BROWN\nBackend Engineer\n\nDoorDash — Backend Engineer (2021–Present)\n- Owns order fulfillment services\n\nEDUCATION\nBS Computer Engineering — NYU (2019)",
+        "type":  "pipeline",
+        "notes":  [
+                      {
+                          "NOTEID":  "N004",
+                          "ACTIONTYPE":  "Rec – Sense AI",
+                          "NOTE":  "Candidate is a Partial Fit – Liam has solid Django/PostgreSQL skills but lacks AWS experience required for this role. May be suitable for backend-only positions.",
+                          "USERNAME":  "jsmith",
+                          "ACTIONDATE":  "2026-08-14T11:20:00",
+                          "JOBID":  "J001"
+                      },
+                      {
+                          "NOTEID":  "N005",
+                          "ACTIONTYPE":  "Rec – Inbound",
+                          "NOTE":  "Applied through job board. Resume reviewed. Good backend fundamentals. Missing cloud certifications. Asked to complete a take-home assessment.",
+                          "USERNAME":  "alee",
+                          "ACTIONDATE":  "2026-08-08T13:45:00",
+                          "JOBID":  "J001"
+                      }
+                  ]
+    },
+    {
+        "id":  "C003",
+        "jobId":  "J002",
+        "name":  "Noah Taylor",
+        "email":  "noah@example.com",
+        "phone":  "+1-555-0103",
+        "location":  "NYC",
+        "city":  "New York",
+        "state":  "NY",
+        "experience":  4,
+        "skills":  [
+                       "Product Management",
+                       "SQL",
+                       "A/B Testing",
+                       "B2B SaaS"
+                   ],
+        "education":  "MBA — Wharton",
+        "certifications":  [
+                               "Pragmatic Marketing Certified"
+                           ],
+        "profile":  "Growth PM at a Series B startup, doubled activation rate.",
+        "resume":  "NOAH TAYLOR\nProduct Manager\n\nMixpanel — Growth PM (2022–Present)\n\nEDUCATION\nMBA — Wharton",
+        "type":  "pipeline",
+        "notes":  [
+                      {
+                          "NOTEID":  "N006",
+                          "ACTIONTYPE":  "Rec – Outbound",
+                          "NOTE":  "Noah came highly referred by a mutual contact. Wharton MBA with strong B2B SaaS background. Currently at Mixpanel. Interested in a leadership PM role. Scheduling a call.",
+                          "USERNAME":  "jsmith",
+                          "ACTIONDATE":  "2026-08-12T10:00:00",
+                          "JOBID":  "J002"
+                      }
+                  ]
+    }
+]
