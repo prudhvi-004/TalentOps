@@ -1,122 +1,76 @@
 // =============================================================
-// SERVER.JS — MAIN APPLICATION ENTRY POINT
+// SERVER.JS — MAIN APPLICATION ENTRY POINT  (start: node server.js)
 // =============================================================
-// Purpose:
-//   Starts the Express web server.
-//   Wires together all routes, middleware, and static files.
-//   This is the file you run to start the application.
-//
-// Start command:
-//   node server.js
-//
-// Then open browser to:
-//   http://localhost:3000
-// =============================================================
-
 require('dotenv').config();
+
+const REQUIRED_ENV = ['OIDC_ISSUER_URL', 'OIDC_CLIENT_ID', 'OIDC_CLIENT_SECRET', 'OIDC_REDIRECT_URI', 'SESSION_SECRET'];
+const missing = REQUIRED_ENV.filter(k => !process.env[k]);
+if (missing.length) {
+  console.error(`❌ Missing required environment variables: ${missing.join(', ')}`);
+  process.exit(1);
+}
+if (process.env.SESSION_SECRET.length < 32) {
+  console.error('❌ SESSION_SECRET must be at least 32 characters.');
+  process.exit(1);
+}
+
 const express = require('express');
 const session = require('express-session');
 const cors = require('cors');
 const path = require('path');
 
 const authRoutes = require('./server/routes/auth.routes');
+const adminRoutes = require('./server/routes/admin.routes');
 const apiRoutes = require('./server/routes/api.routes');
-const { requireLogin } = require('./server/middleware/auth');
+const { requireLogin, requireRole } = require('./server/middleware/auth');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const secureCookie = process.env.NODE_ENV === 'production' || /^https:/i.test(process.env.OIDC_REDIRECT_URI);
 
-// ----------------------------------------------------------
-// MIDDLEWARE SETUP
-// ----------------------------------------------------------
+// Set TRUST_PROXY=1 when behind a TLS-terminating proxy so secure cookies work.
+if (process.env.TRUST_PROXY) app.set('trust proxy', 1);
 
-// Parse incoming JSON request bodies
 app.use(express.json());
-
-// Parse URL-encoded form data (login form submissions)
 app.use(express.urlencoded({ extended: true }));
-
-// Allow cross-origin requests (needed if frontend ever
-// runs on a different port than the server)
 app.use(cors());
 
-// Session configuration
-// Sessions keep the user logged in between page navigations.
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'change_this_secret',
+  name: 'talentops.sid',
+  secret: process.env.SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
   cookie: {
-    // Session lasts 8 hours (enough for a full demo day)
     maxAge: 8 * 60 * 60 * 1000,
-    httpOnly: true,    // Prevents JavaScript from reading cookie
-    secure: false,     // Set to true if using HTTPS in production
+    httpOnly: true,
+    sameSite: 'lax',      // 'strict' would drop the cookie on the IdP → callback redirect
+    secure: secureCookie,
   },
 }));
 
-// ----------------------------------------------------------
-// STATIC FILES
-// Serve everything in /public directly to the browser.
-// /public/css/  → http://localhost:3000/css/
-// /public/js/   → http://localhost:3000/js/
-// ----------------------------------------------------------
-app.use(express.static(path.join(__dirname, 'public')));
+// Static assets. index:false so "/" is NOT served without authentication.
+app.use(express.static(path.join(__dirname, 'public'), { index: false }));
 
-// ----------------------------------------------------------
-// ROUTES
-// ----------------------------------------------------------
-
-// Auth routes (login page + login/logout actions)
-// These do NOT require login — they ARE the login flow.
+// Auth (login / callback / logout / denied) — public by design
 app.use('/', authRoutes);
 
-// API routes (all data endpoints for the frontend)
-// requireLogin is applied inside api.routes.js
+// Identity + admin APIs (must be registered before the generic /api router)
+app.get('/api/me', requireLogin, (req, res) => res.json({ success: true, data: req.user }));
+app.use('/api/admin', requireLogin, requireRole('ADMIN'), adminRoutes);
+
+// Existing data APIs (requireLogin is applied inside api.routes.js)
 app.use('/api', apiRoutes);
 
-// ----------------------------------------------------------
-// MAIN APP PAGES
-// All pages below require the user to be logged in.
-// Each route serves the same index.html shell.
-// The frontend JavaScript handles what content to show
-// based on the current URL path.
-// ----------------------------------------------------------
-const pages = ['/', '/jobs', '/candidates', '/tasks', '/team', '/clients', '/admin'];
+// App shell pages
+const shell = (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html'));
+['/', '/index.html', '/jobs', '/candidates', '/tasks', '/team', '/clients'].forEach(p => app.get(p, requireLogin, shell));
+app.get('/admin', requireLogin, requireRole('ADMIN'), shell);
+app.get('/jobs/:id', requireLogin, shell);
+app.get('/candidates/:id', requireLogin, shell);
 
-pages.forEach(page => {
-  app.get(page, requireLogin, (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
-  });
-});
+app.use((req, res) => res.status(404).json({ error: 'Route not found' }));
 
-// Job detail and candidate profile are dynamic routes
-app.get('/jobs/:id', requireLogin, (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-app.get('/candidates/:id', requireLogin, (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-// ----------------------------------------------------------
-// 404 HANDLER
-// Catches any route not matched above.
-// ----------------------------------------------------------
-app.use((req, res) => {
-  res.status(404).json({ error: 'Route not found' });
-});
-
-// ----------------------------------------------------------
-// START SERVER
-// ----------------------------------------------------------
 app.listen(PORT, () => {
-  console.log('');
-  console.log('╔═══════════════════════════════════════════╗');
-  console.log('║        TalentOps Demo — Running           ║');
-  console.log(`║   http://localhost:${PORT}                   ║`);
-  console.log('║                                           ║');
-  console.log(`║   ATS Provider: ${process.env.ATS_PROVIDER || 'mock'}                     ║`);
-  console.log('║   Login: demo / talentops2024             ║');
-  console.log('╚═══════════════════════════════════════════╝');
-  console.log('');
+  console.log(`TalentOps running on http://localhost:${PORT}`);
+  console.log(`ATS Provider: ${process.env.ATS_PROVIDER || 'mock'} | Auth: OIDC SSO`);
 });
