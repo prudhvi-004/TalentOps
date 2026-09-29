@@ -1,0 +1,24 @@
+[
+  {
+    "id": "5cb5d705-a01e-40a5-ab96-c331e0ed4d7c",
+    "email": "admin@example.local",
+    "name": "",
+    "role": "ADMIN",
+    "active": true,
+    "jobdivaRecruiterId": "",
+    "sub": "",
+    "createdAt": "2026-09-29T13:28:58.816Z",
+    "updatedAt": "2026-09-29T13:28:58.816Z"
+  },
+  {
+    "id": "3ea6d719-8ba4-47e8-9542-fa16be9bd576",
+    "email": "recruiter@example.local",
+    "name": "Mock Recruiter",
+    "role": "RECRUITER",
+    "active": true,
+    "jobdivaRecruiterId": "900001",
+    "sub": "",
+    "createdAt": "2026-09-29T13:41:11.110Z",
+    "updatedAt": "2026-09-29T13:41:11.110Z"
+  }
+]

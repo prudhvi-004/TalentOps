@@ -50,6 +50,9 @@ function add({ email, name, role, jobdivaRecruiterId }) {
   if (jobdivaRecruiterId && !/^\d+$/.test(String(jobdivaRecruiterId))) {
     throw httpError(400, 'JobDiva recruiter ID must be numeric.');
   }
+  if (role === 'RECRUITER' && !jobdivaRecruiterId) {
+    throw httpError(400, 'An existing JobDiva recruiter ID is required for recruiters.');
+  }
   if (load().some(r => r.email === email)) {
     throw httpError(409, 'User already exists. Reactivate the existing record instead.');
   }
@@ -75,6 +78,10 @@ function update(id, patch, actor) {
   if (patch.jobdivaRecruiterId !== undefined && patch.jobdivaRecruiterId !== '' &&
       !/^\d+$/.test(String(patch.jobdivaRecruiterId))) {
     throw httpError(400, 'JobDiva recruiter ID must be numeric.');
+  }
+  const nextJd = patch.jobdivaRecruiterId === undefined ? rec.jobdivaRecruiterId : String(patch.jobdivaRecruiterId || '');
+  if (next.role === 'RECRUITER' && next.active && !nextJd) {
+    throw httpError(400, 'An existing JobDiva recruiter ID is required for recruiters.');
   }
   const losesAdmin = rec.role === 'ADMIN' && rec.active && (!next.active || next.role !== 'ADMIN');
   if (losesAdmin) {

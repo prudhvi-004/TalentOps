@@ -15,7 +15,7 @@ const AdminPage = (() => {
         </div>
         <div class="form-row">
           <div class="form-group"><label>Role</label><select id="adRole"><option>RECRUITER</option><option>ADMIN</option></select></div>
-          <div class="form-group"><label>JobDiva recruiter ID (optional)</label><input id="adJd" inputmode="numeric"/></div>
+          <div class="form-group"><label>Existing JobDiva recruiter ID (required for recruiters)</label><input id="adJd" inputmode="numeric"/></div>
         </div>
         <button class="btn btn-primary" id="adAdd">Add</button>
       </div>

@@ -3,7 +3,14 @@
 // =============================================================
 require('dotenv').config();
 
-const REQUIRED_ENV = ['OIDC_ISSUER_URL', 'OIDC_CLIENT_ID', 'OIDC_CLIENT_SECRET', 'OIDC_REDIRECT_URI', 'SESSION_SECRET'];
+const MOCK_AUTH = process.env.AUTH_MODE === 'mock';
+if (MOCK_AUTH && process.env.NODE_ENV !== 'development') {
+  console.error('❌ AUTH_MODE=mock is only permitted when NODE_ENV=development. Refusing to start.');
+  process.exit(1);
+}
+const REQUIRED_ENV = MOCK_AUTH
+  ? ['SESSION_SECRET']
+  : ['OIDC_ISSUER_URL', 'OIDC_CLIENT_ID', 'OIDC_CLIENT_SECRET', 'OIDC_REDIRECT_URI', 'SESSION_SECRET'];
 const missing = REQUIRED_ENV.filter(k => !process.env[k]);
 if (missing.length) {
   console.error(`❌ Missing required environment variables: ${missing.join(', ')}`);
@@ -52,6 +59,10 @@ app.use(session({
 app.use(express.static(path.join(__dirname, 'public'), { index: false }));
 
 // Auth (login / callback / logout / denied) — public by design
+if (MOCK_AUTH) {
+  console.warn('⚠️  DEV MOCK AUTH ENABLED (NODE_ENV=development, AUTH_MODE=mock) — never use in production.');
+  app.use('/', require('./server/routes/dev-auth.routes')); // must precede authRoutes
+}
 app.use('/', authRoutes);
 
 // Identity + admin APIs (must be registered before the generic /api router)

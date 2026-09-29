@@ -1,103 +1,39 @@
-// OIDC (authorization code + PKCE + state + nonce). Provider-agnostic via discovery.
-const path = require('path');
-const express = require('express');
-const { Issuer, generators } = require('openid-client');
+// Session + role enforcement. The session stores only the recruiter id;
+// role/active status are re-read from the store on EVERY request so
+// deactivation and demotion take effect immediately.
 const store = require('../services/recruiter.store');
+const requestContext = require('../services/request-context');
 
-const router = express.Router();
-const SCOPE = 'openid profile email';
-const REDIRECT_URI = process.env.OIDC_REDIRECT_URI;
-const POST_LOGOUT_URI = process.env.OIDC_POST_LOGOUT_REDIRECT_URI;
+const isApi = req => req.originalUrl.startsWith('/api/');
 
-let clientPromise = null;
-function getClient() {
-  if (!clientPromise) {
-    clientPromise = Issuer.discover(process.env.OIDC_ISSUER_URL)
-      .then(issuer => new issuer.Client({
-        client_id: process.env.OIDC_CLIENT_ID,
-        client_secret: process.env.OIDC_CLIENT_SECRET,
-        redirect_uris: [REDIRECT_URI],
-        response_types: ['code'],
-      }))
-      .catch(err => { clientPromise = null; throw err; });
-  }
-  return clientPromise;
-}
+function requireLogin(req, res, next) {
+  const sid = req.session && req.session.user && req.session.user.id;
+  const rec = sid ? store.findById(sid) : null;
 
-// Only same-site relative paths; blocks open redirects.
-function safeReturnTo(v) {
-  return typeof v === 'string' && /^\/(?![/\\])/.test(v) && !v.startsWith('/auth/') ? v : '/';
-}
-const deny = (res, reason) => res.redirect('/auth/denied?reason=' + encodeURIComponent(reason));
-
-router.get('/auth/login', async (req, res) => {
-  if (req.session.user) return res.redirect(safeReturnTo(req.query.returnTo));
-  try {
-    const client = await getClient();
-    const state = generators.state();
-    const nonce = generators.nonce();
-    const verifier = generators.codeVerifier();
-    req.session.oidc = { state, nonce, verifier, returnTo: safeReturnTo(req.query.returnTo) };
-    const url = client.authorizationUrl({
-      scope: SCOPE, state, nonce,
-      code_challenge: generators.codeChallenge(verifier),
-      code_challenge_method: 'S256',
-    });
-    req.session.save(err => (err ? deny(res, 'error') : res.redirect(url)));
-  } catch (err) {
-    console.error('[auth] Login initiation failed:', err.message);
-    deny(res, 'provider');
-  }
-});
-
-router.get('/auth/callback', async (req, res) => {
-  const saved = req.session.oidc;
-  if (!saved) return deny(res, 'session');
-  try {
-    const client = await getClient();
-    const params = client.callbackParams(req);
-    if (params.error) {
-      console.warn('[auth] IdP returned error:', params.error);
-      return deny(res, 'idp');
-    }
-    const tokenSet = await client.callback(REDIRECT_URI, params, {
-      state: saved.state, nonce: saved.nonce, code_verifier: saved.verifier,
-    });
-    const result = store.resolveLogin(tokenSet.claims());
-    if (!result.ok) return req.session.destroy(() => deny(res, result.reason));
-
-    const idToken = tokenSet.id_token; // kept server-side only (logout hint)
-    req.session.regenerate(err => {
-      if (err) return deny(res, 'error');
-      req.session.user = { id: result.record.id };
-      req.session.idToken = idToken;
-      req.session.save(() => res.redirect(saved.returnTo));
-    });
-  } catch (err) {
-    console.error('[auth] Callback validation failed:', err.message);
-    req.session.destroy(() => deny(res, 'error'));
-  }
-});
-
-router.post('/auth/logout', async (req, res) => {
-  const idToken = req.session && req.session.idToken;
-  req.session.destroy(async () => {
-    res.clearCookie('talentops.sid');
-    let redirect = '/access-denied.html?reason=signedout';
-    try {
-      if (POST_LOGOUT_URI) {
-        const client = await getClient();
-        if (client.issuer.metadata.end_session_endpoint) {
-          redirect = client.endSessionUrl({ id_token_hint: idToken, post_logout_redirect_uri: POST_LOGOUT_URI });
-        }
+  if (!rec || !rec.active) {
+    const finish = () => {
+      if (isApi(req)) {
+        return res.status(401).json({ success: false, error: 'Authentication required', code: 'UNAUTHENTICATED' });
       }
-    } catch (_) { /* fall back to local sign-out page */ }
-    res.json({ success: true, redirect });
-  });
-});
+      return res.redirect('/auth/login?returnTo=' + encodeURIComponent(req.originalUrl));
+    };
+    if (req.session && sid) return req.session.destroy(finish); // revoked/removed
+    return finish();
+  }
 
-router.get('/auth/denied', (req, res) => {
-  res.status(403).sendFile(path.join(__dirname, '../../public/access-denied.html'));
-});
+  req.user = {
+    id: rec.id, email: rec.email, name: rec.name, role: rec.role,
+    jobdivaRecruiterId: rec.jobdivaRecruiterId || '',
+  };
+  requestContext.run(req.user, next);
+}
 
-module.exports = router;
+function requireRole(...roles) {
+  return (req, res, next) => {
+    if (req.user && roles.includes(req.user.role)) return next();
+    if (isApi(req)) return res.status(403).json({ success: false, error: 'Forbidden' });
+    return res.redirect('/auth/denied?reason=forbidden');
+  };
+}
+
+module.exports = { requireLogin, requireRole };
