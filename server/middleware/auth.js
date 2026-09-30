@@ -6,9 +6,14 @@ const requestContext = require('../services/request-context');
 
 const isApi = req => req.originalUrl.startsWith('/api/');
 
-function requireLogin(req, res, next) {
+async function requireLogin(req, res, next) {
   const sid = req.session && req.session.user && req.session.user.id;
-  const rec = sid ? store.findById(sid) : null;
+  let rec;
+  try { rec = sid ? await store.findById(sid) : null; }
+  catch (error) {
+    console.error('[auth] User lookup failed:', error.message);
+    return res.status(503).json({ success: false, error: 'Authentication service unavailable' });
+  }
 
   if (!rec || !rec.active) {
     const finish = () => {
@@ -23,7 +28,9 @@ function requireLogin(req, res, next) {
 
   req.user = {
     id: rec.id, email: rec.email, name: rec.name, role: rec.role,
-    jobdivaRecruiterId: rec.jobdivaRecruiterId || '',
+    jobdivaUserId: rec.jobdivaUserId,
+    jobdivaRecruiterId: rec.jobdivaUserId || '',
+    active: rec.active,
   };
   requestContext.run(req.user, next);
 }

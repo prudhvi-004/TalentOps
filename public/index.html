@@ -73,11 +73,12 @@
       <button class="icon-btn" id="themeToggle" title="Toggle Theme">🌙</button>
 
       <!-- User chip -->
-      <div class="user-chip">
-        <div class="avatar" id="userAvatar">D</div>
-        <span class="user-chip-name" id="userName">Demo User</span>
+      <div class="user-chip" id="userChip" style="visibility:hidden">
+        <div class="avatar" id="userAvatar"></div>
+        <span class="user-chip-name" id="userName"></span>
+        <span class="user-role" id="userRole"></span>
         <!-- Logout -->
-        <a href="/logout" class="icon-btn" title="Logout" style="text-decoration:none">↪</a>
+        <button type="button" id="logoutBtn" class="icon-btn" title="Logout">&#8617;</button>
       </div>
 
     </div>
@@ -166,6 +167,7 @@
      3. Page scripts are loaded dynamically by app.js
 ====================================================== -->
 <script src="/js/services/api.service.js"></script>
+<script src="/js/auth-client.js"></script>
 <script src="/js/app.js"></script>
 
 </body>

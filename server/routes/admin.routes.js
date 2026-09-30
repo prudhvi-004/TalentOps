@@ -1,29 +1,37 @@
-// Mounted at /api/admin behind requireLogin + requireRole('ADMIN') in server.js.
+// Mounted behind requireLogin + requireRole('ADMIN') in server.js.
 const express = require('express');
 const store = require('../services/recruiter.store');
 const router = express.Router();
 
-const fail = (res, e) => {
-  if (!e.status) console.error('[admin] Unexpected error:', e.message);
-  res.status(e.status || 500).json({ success: false, error: e.status ? e.message : 'Internal error' });
+const fail = (res, error) => {
+  if (!error.status) console.error('[admin] Unexpected error:', error.message);
+  res.status(error.status || 500).json({ success: false, error: error.status ? error.message : 'Internal error' });
 };
 
-router.get('/recruiters', (req, res) => res.json({ success: true, data: store.list() }));
-
-router.post('/recruiters', (req, res) => {
-  try { res.status(201).json({ success: true, data: store.add(req.body || {}) }); }
-  catch (e) { fail(res, e); }
+router.get(['/users', '/recruiters'], async (req, res) => {
+  try { res.json({ success: true, data: await store.list() }); }
+  catch (error) { fail(res, error); }
 });
 
-router.patch('/recruiters/:id', (req, res) => {
-  try { res.json({ success: true, data: store.update(req.params.id, req.body || {}, req.user) }); }
-  catch (e) { fail(res, e); }
+router.post(['/users', '/recruiters'], async (req, res) => {
+  try {
+    const id = String(req.body?.jobdivaUserId || '').trim();
+    if (!id) return res.status(400).json({ success: false, error: 'Select an existing MongoDB TalentOps user.' });
+    const user = await store.findByJobDivaUserId(id);
+    if (!user) return res.status(404).json({ success: false, error: 'This JobDiva user is not in the seeded TalentOps directory.' });
+    res.json({ success: true, data: await store.update(user.id, { role: 'RECRUITER', active: true }, req.user) });
+  } catch (error) { fail(res, error); }
 });
 
-// Soft delete: deactivates (history/identity preserved).
-router.delete('/recruiters/:id', (req, res) => {
-  try { res.json({ success: true, data: store.update(req.params.id, { active: false }, req.user) }); }
-  catch (e) { fail(res, e); }
+router.patch(['/users/:id', '/recruiters/:id'], async (req, res) => {
+  try { res.json({ success: true, data: await store.update(req.params.id, req.body || {}, req.user) }); }
+  catch (error) { fail(res, error); }
+});
+
+// Kept for existing clients: remove means deactivate TalentOps access only.
+router.delete(['/users/:id', '/recruiters/:id'], async (req, res) => {
+  try { res.json({ success: true, data: await store.update(req.params.id, { active: false }, req.user) }); }
+  catch (error) { fail(res, error); }
 });
 
 module.exports = router;

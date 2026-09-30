@@ -63,7 +63,7 @@ router.get('/auth/callback', async (req, res) => {
     const tokenSet = await client.callback(REDIRECT_URI, params, {
       state: saved.state, nonce: saved.nonce, code_verifier: saved.verifier,
     });
-    const result = store.resolveLogin(tokenSet.claims());
+    const result = await store.resolveLogin(tokenSet.claims());
     if (!result.ok) return req.session.destroy(() => deny(res, result.reason));
 
     const idToken = tokenSet.id_token; // kept server-side only (logout hint)

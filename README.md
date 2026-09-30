@@ -6,7 +6,7 @@ Recruitment operations platform demo connecting to ATS sandbox APIs.
 
 ## Prerequisites
 
-- Node.js v16 or higher
+- Node.js v20 or higher
 - npm v8 or higher
 - A modern browser (Chrome / Edge recommended)
 
@@ -22,12 +22,39 @@ cd Desktop
 git clone <your-repo-url> talentops-demo
 # Or just have the folder ready from setup
 cd talentops-demo
+```
+
+## Sandbox authentication setup
+
+TalentOps sandbox login uses its own MongoDB-backed account and password. It
+does not use JobDiva credentials. Local authentication is intentionally blocked
+when `NODE_ENV=production`.
+
+1. Start MongoDB Atlas or a local MongoDB server.
+2. Configure `MONGODB_URI`, `MONGODB_DB`, `SANDBOX_DEFAULT_PASSWORD`, and
+   `SANDBOX_INITIAL_ADMIN_JOBDIVA_USER_ID` in `.env`. Set the last value to a
+   USERID from `data/users.seed.json`.
+3. Run `npm install`, then run `npm run seed:users` to import the seed file.
+   The repeatable import does not call JobDiva and refreshes seeded password
+   hashes from the shared sandbox password.
+4. Run `npm start` and open `http://localhost:3000/auth/login`.
+
+An ADMIN adds a recruiter by searching the MongoDB TalentOps user directory and
+selecting a seeded, unassigned user. The user must be active in JobDiva; adding
+sets the TalentOps role to RECRUITER and activates TalentOps access. Deactivation
+preserves the MongoDB and JobDiva identities. At least one active ADMIN is
+required, and admins cannot deactivate or demote themselves.
+
+Sessions and role checks are shared across providers. `AUTH_PROVIDER=local`
+selects this sandbox login; the existing OIDC provider module remains separate
+for a future provider switch.
 
 ## JobDiva integration flow
 
-When `ATS_PROVIDER=jobdiva`, the application uses the recruiter ID in
-`JOBDIVA_RECRUITER_ID` as the server-side scope for jobs. It does not fetch all
-JobDiva jobs and filter them in the browser.
+When `ATS_PROVIDER=jobdiva`, the application scopes recruiter-specific calls
+with the authenticated TalentOps user's provisioned JobDiva `USERID`. It does
+not use one global recruiter ID for all TalentOps users or filter all jobs in
+the browser.
 
 ### Job flow
 

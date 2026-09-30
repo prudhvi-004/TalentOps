@@ -32,6 +32,14 @@ const path = require('path');
 const fs = require('fs');
 const fetch = require('node-fetch');
 const { active: config, provider } = require('../config/ats.config');
+const requestContext = require('./request-context');
+
+function currentJobDivaUserId() {
+  const user = requestContext.currentUser();
+  const id = user && user.jobdivaUserId;
+  if (!id || !/^\d+$/.test(String(id))) throw new Error('The authenticated TalentOps user is missing a valid JobDiva USERID.');
+  return Number(id);
+}
 
 function loadMockData(filename) {
   const filePath = path.join(__dirname, '../../data', filename);
@@ -673,14 +681,12 @@ async function getJobs() {
   if (provider === 'mock') return loadMockData('jobs.json');
   if (provider !== 'jobdiva') throw new Error(`getJobs is not implemented for provider: ${provider}`);
 
-  if (!config.recruiterId) {
-    throw new Error('JOBDIVA_RECRUITER_ID is required. Jobs are intentionally filtered to one JobDiva recruiter.');
-  }
+  const recruiterId = currentJobDivaUserId();
 
   // JobDiva has an exact recruiter filter: JobsListByUser(recruiterId).
   // This is preferable to fetching every open job and filtering locally.
   const listData = await requestJobDivaGet(config.endpoints.jobsListByUser, {
-    recruiterId: Number(config.recruiterId),
+    recruiterId,
   });
   const listRows = getRows(listData) || [];
   const jobIds = unique((Array.isArray(listRows) ? listRows : [listRows]).map(row => extractId(row, [
@@ -785,14 +791,12 @@ async function getJobById(id) {
   }
   if (provider !== 'jobdiva') throw new Error(`getJobById is not implemented for provider: ${provider}`);
 
-  if (!config.recruiterId) {
-    throw new Error('JOBDIVA_RECRUITER_ID is required.');
-  }
+  const recruiterId = currentJobDivaUserId();
 
   // Enforce the same recruiter scope on direct job-detail URLs.
   // Otherwise a user could bypass the list filter by typing another Job ID.
   const scopedJobs = await requestJobDivaGet(config.endpoints.jobsListByUser, {
-    recruiterId: Number(config.recruiterId),
+    recruiterId,
   });
   const scopedRows = getRows(scopedJobs) || [];
   const scopedIds = new Set((Array.isArray(scopedRows) ? scopedRows : [scopedRows])
@@ -1921,10 +1925,7 @@ async function writeNote({
     // Must match a registered JobDiva Candidate Note Action.
     action: cleanActionType || undefined,
 
-    recruiterid:
-      config.recruiterId
-        ? Number(config.recruiterId)
-        : undefined,
+    recruiterid: currentJobDivaUserId(),
 
     link2AnOpenJob:
       jobId
