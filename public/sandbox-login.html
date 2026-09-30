@@ -10,12 +10,55 @@
     <div class="login-logo"><div class="logo-icon">T</div><span class="logo-text">TalentOps</span></div>
     <h1 class="login-title">Sandbox sign in</h1>
     <p class="login-sub">Development sandbox access</p>
-    <div class="form-group"><label for="email">Email</label><input id="email" name="email" type="email" autocomplete="username" required/></div>
-    <div class="form-group"><label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required/></div>
+    <fieldset class="login-mode" aria-label="Login method">
+      <button type="button" class="login-mode-option is-selected" data-login-type="email" aria-pressed="true">Email</button>
+      <button type="button" class="login-mode-option" data-login-type="recruiterId" aria-pressed="false">Recruiter ID</button>
+    </fieldset>
+    <div class="form-group"><label for="identifier" id="identifierLabel">EMAIL</label><input id="identifier" name="identifier" type="email" placeholder="Enter your email" autocomplete="username" required/></div>
+    <div class="form-group"><label for="password">Password</label><div class="password-input-wrap"><input id="password" name="password" type="password" autocomplete="current-password" required/><button class="password-visibility" type="button" id="passwordVisibility" aria-label="Show password" aria-controls="password"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button></div></div>
     <p class="login-sub" id="loginError" role="alert" style="display:none;color:#b42318"></p>
     <button class="btn btn-primary btn-full" type="submit" id="submitBtn">Sign In</button>
   </form></div>
+  <style>
+    .login-mode { display: flex; width: 100%; margin: 0 0 16px; padding: 3px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); }
+    .login-mode-option { flex: 1; padding: 8px 12px; border: 0; border-radius: 6px; background: transparent; color: var(--text-muted); font: inherit; cursor: pointer; }
+    .login-mode-option.is-selected { background: var(--primary); color: #fff; }
+    .login-mode-option:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+    .password-input-wrap { position: relative; }
+    .password-input-wrap input { padding-right: 46px; }
+    .password-visibility { position: absolute; top: 50%; right: 12px; display: grid; width: 24px; height: 24px; padding: 0; place-items: center; transform: translateY(-50%); border: 0; background: transparent; color: #667085; cursor: pointer; }
+    .password-visibility svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .password-visibility:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; border-radius: 3px; }
+  </style>
   <script>
+    let loginType = 'email';
+    const identifierInput = document.getElementById('identifier');
+    const identifierLabel = document.getElementById('identifierLabel');
+    document.querySelectorAll('.login-mode-option').forEach(option => {
+      option.addEventListener('click', () => {
+        loginType = option.dataset.loginType;
+        identifierInput.value = '';
+        const isEmail = loginType === 'email';
+        identifierLabel.textContent = isEmail ? 'EMAIL' : 'RECRUITER ID';
+        identifierInput.placeholder = isEmail ? 'Enter your email' : 'Enter your Recruiter ID';
+        identifierInput.type = isEmail ? 'email' : 'text';
+        identifierInput.setAttribute('aria-label', isEmail ? 'Email' : 'Recruiter ID');
+        document.querySelectorAll('.login-mode-option').forEach(button => {
+          const selected = button === option;
+          button.classList.toggle('is-selected', selected);
+          button.setAttribute('aria-pressed', String(selected));
+        });
+      });
+    });
+
+    const passwordInput = document.getElementById('password');
+    const visibilityButton = document.getElementById('passwordVisibility');
+    visibilityButton.addEventListener('click', () => {
+      const showing = passwordInput.type === 'password';
+      passwordInput.type = showing ? 'text' : 'password';
+      visibilityButton.setAttribute('aria-label', showing ? 'Hide password' : 'Show password');
+    });
+
     document.getElementById('loginForm').addEventListener('submit', async event => {
       event.preventDefault();
       const button = document.getElementById('submitBtn');
@@ -27,8 +70,9 @@
           method: 'POST', credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
           body: JSON.stringify({
-            email: document.getElementById('email').value,
-            password: document.getElementById('password').value,
+            loginType,
+            identifier: identifierInput.value,
+            password: passwordInput.value,
             returnTo: new URLSearchParams(location.search).get('returnTo'),
           }),
         });

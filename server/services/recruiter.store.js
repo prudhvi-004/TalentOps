@@ -91,7 +91,13 @@ async function list() { return (await connect()).find({}).sort({ name: 1, email:
 async function findById(id) { return publicView(await (await connect()).findOne({ id: String(id) })); }
 async function findByJobDivaUserId(id) { return publicView(await (await connect()).findOne({ jobdivaUserId: String(id) })); }
 async function findByEmail(email) { return publicView(await (await connect()).findOne({ email: normalizeEmail(email) })); }
-async function findForLogin(email) { return (await connect()).findOne({ email: normalizeEmail(email) }); }
+async function findForLogin(identifier, loginType = 'email') {
+  const value = String(identifier || '').trim();
+  const query = loginType === 'recruiterId'
+    ? { jobdivaUserId: value }
+    : { email: normalizeEmail(value) };
+  return (await connect()).findOne(query);
+}
 async function touchLogin(id) { await (await connect()).updateOne({ id: String(id) }, { $set: { lastLoginAt: new Date(), updatedAt: new Date() } }); }
 
 async function seedUsers(sourceUsers, initialAdminId, passwordHash) {
