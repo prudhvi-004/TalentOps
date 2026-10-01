@@ -1,0 +1,254 @@
+<title>TalentOps Build Log</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap');
+
+  :root{
+    --bg:#f7f5f1; --surface:#ffffff; --surface-2:#f0ede6;
+    --border:#e4ded2; --text:#241f1a; --text-muted:#6b6355;
+    --accent:#4f46e5; --accent-soft:#eceafd;
+    --good:#0f7a4f; --good-soft:#e4f5ec;
+    --warn:#9a5b00; --warn-soft:#fbead0;
+    --mono-bg:#1f1b16; --mono-text:#e9e4d8;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#17150f; --surface:#211e18; --surface-2:#2a261e;
+      --border:#3a3527; --text:#efe9dc; --text-muted:#a79e8a;
+      --accent:#9d97ff; --accent-soft:#2a2650;
+      --good:#6fd9a6; --good-soft:#163828;
+      --warn:#f2bb6a; --warn-soft:#3a2a0e;
+      --mono-bg:#0d0b08; --mono-text:#e9e4d8;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#17150f; --surface:#211e18; --surface-2:#2a261e;
+    --border:#3a3527; --text:#efe9dc; --text-muted:#a79e8a;
+    --accent:#9d97ff; --accent-soft:#2a2650;
+    --good:#6fd9a6; --good-soft:#163828;
+    --warn:#f2bb6a; --warn-soft:#3a2a0e;
+    --mono-bg:#0d0b08; --mono-text:#e9e4d8;
+    color-scheme: dark;
+  }
+
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:'IBM Plex Sans',system-ui,sans-serif;
+    font-size:15px; line-height:1.6;
+  }
+  .wrap{
+    max-width:1180px; margin:0 auto;
+    padding: max(32px, env(safe-area-inset-top,0px)) 20px 60px;
+  }
+  h1,h2,h3{font-family:'Fraunces',Georgia,serif; text-wrap:balance; margin:0}
+  header.top{ padding-bottom:28px; border-bottom:1px solid var(--border); margin-bottom:28px; }
+  .eyebrow{
+    font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:.12em;
+    color:var(--accent); text-transform:uppercase; margin-bottom:10px;
+  }
+  h1{font-size:clamp(28px,5vw,42px); font-weight:700}
+  .sub{color:var(--text-muted); margin-top:10px; font-size:15px; max-width:640px}
+  .meta{display:flex; gap:18px; flex-wrap:wrap; margin-top:18px; font-size:13px; color:var(--text-muted)}
+  .meta b{color:var(--text); font-weight:600}
+
+  .layout{display:grid; grid-template-columns:220px 1fr; gap:40px; align-items:start}
+  @media (max-width:800px){ .layout{grid-template-columns:1fr} }
+
+  nav.toc{
+    position:sticky; top:24px; display:flex; flex-direction:column; gap:2px;
+    font-size:13px;
+  }
+  @media (max-width:800px){ nav.toc{ position:static; flex-direction:row; flex-wrap:wrap; gap:8px 16px; margin-bottom:8px; } }
+  nav.toc a{
+    color:var(--text-muted); text-decoration:none; padding:6px 0; border-left:2px solid transparent;
+    padding-left:10px;
+  }
+  nav.toc a:hover{color:var(--text); border-left-color:var(--border)}
+  nav.toc .n{font-family:'IBM Plex Mono',monospace; color:var(--accent); margin-right:6px; font-size:11px}
+
+  main{min-width:0}
+  section.card{
+    background:var(--surface); border:1px solid var(--border); border-radius:14px;
+    padding:26px 28px; margin-bottom:20px; scroll-margin-top:20px;
+  }
+  .card-head{display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap}
+  .card-head h2{font-size:21px; font-weight:600}
+  .tag{
+    font-family:'IBM Plex Mono',monospace; font-size:11px; padding:4px 9px; border-radius:99px;
+    white-space:nowrap; font-weight:500; letter-spacing:.02em;
+  }
+  .tag.fix{background:var(--warn-soft); color:var(--warn)}
+  .tag.build{background:var(--good-soft); color:var(--good)}
+
+  h3.label{
+    font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--text-muted); margin:18px 0 8px;
+  }
+  p{margin:0 0 10px}
+  ul{margin:0 0 10px; padding-left:20px}
+  li{margin-bottom:4px}
+
+  code, .file{
+    font-family:'IBM Plex Mono',monospace; font-size:12.5px;
+    background:var(--surface-2); border:1px solid var(--border); border-radius:5px;
+    padding:1px 6px; color:var(--text);
+  }
+  .filelist{display:flex; flex-wrap:wrap; gap:6px}
+
+  .toolrow{display:flex; flex-wrap:wrap; gap:7px; margin-top:4px}
+  .pill{
+    font-size:12px; background:var(--accent-soft); color:var(--accent);
+    border-radius:99px; padding:4px 11px; font-weight:500;
+  }
+
+  .divider{height:1px; background:var(--border); margin:18px 0}
+
+  footer{margin-top:40px; padding-top:20px; border-top:1px solid var(--border); color:var(--text-muted); font-size:13px}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="eyebrow">Build Log · TalentOps Demo</div>
+    <h1>What got built, and how</h1>
+    <p class="sub">A record of every feature, fix, and investigation from this working session — what the problem was, what we changed, and which tools and files did the work. Written for anyone picking up the project cold.</p>
+    <div class="meta">
+      <span><b>13</b> changes</span>
+      <span><b>JobDiva API</b> + <b>MongoDB Atlas</b></span>
+      <span>Node / Express backend · Vanilla JS frontend</span>
+    </div>
+  </header>
+
+  <div class="layout">
+    <nav class="toc">
+      <a href="#auth"><span class="n">01</span>Auth diagnosis</a>
+      <a href="#activation"><span class="n">02</span>User activation</a>
+      <a href="#mongo"><span class="n">03</span>Mongo migration</a>
+      <a href="#perf"><span class="n">04</span>Performance fixes</a>
+      <a href="#submittals"><span class="n">05</span>Submittals page</a>
+      <a href="#derived"><span class="n">06</span>Interviews/Starts/FPS/Primary</a>
+      <a href="#tiles"><span class="n">07</span>Dashboard tiles</a>
+      <a href="#datebug"><span class="n">08</span>Date-filter bug</a>
+      <a href="#targets"><span class="n">09</span>Progress bars + targets</a>
+      <a href="#priority"><span class="n">10</span>Priority &amp; salary</a>
+      <a href="#hyperlink"><span class="n">11</span>Job title hyperlink</a>
+      <a href="#gridlist"><span class="n">12</span>Grid ↔ list view</a>
+    </nav>
+
+    <main>
+
+      <section class="card" id="auth">
+        <div class="card-head"><h2>Why jobs weren't loading</h2><span class="tag fix">Diagnosis</span></div>
+        <h3 class="label">The problem</h3>
+        <p>Logging in showed an empty jobs list for most recruiters, with no error — so it looked broken. It wasn't.</p>
+        <h3 class="label">What we found</h3>
+        <p>The app correctly scopes every JobDiva call to the logged-in recruiter's own <code>USERID</code> via <code>JobsListByUser</code>. Most seeded sandbox accounts simply have zero jobs assigned to them in JobDiva — the empty list was accurate, not a bug. We queried JobDiva directly for every seeded user, found which ones actually have jobs, and activated those accounts.</p>
+        <h3 class="label">Tools used</h3>
+        <div class="toolrow"><span class="pill">node -e scripts against JobDiva API</span><span class="pill">curl for session/endpoint checks</span></div>
+      </section>
+
+      <section class="card" id="activation">
+        <div class="card-head"><h2>Bulk-activating recruiter accounts</h2><span class="tag build">Built</span></div>
+        <p>Added a script path to flip seeded users from <code>UNASSIGNED</code> to <code>RECRUITER</code> and active, reusing the app's own <code>recruiter.store.update()</code> — so every existing rule still applies: a user can't be activated if JobDiva itself marks them inactive, and the "at least one active admin" guard still holds.</p>
+        <h3 class="label">Files touched</h3>
+        <div class="filelist"><span class="file">server/services/recruiter.store.js</span></div>
+      </section>
+
+      <section class="card" id="mongo">
+        <div class="card-head"><h2>Migrating to your own MongoDB</h2><span class="tag build">Built</span></div>
+        <p>The app was pointed at a shared MongoDB Atlas cluster. Set up a new personal Atlas cluster, updated the connection string, and re-ran the seed script to import all 54 sandbox users fresh — admin role, recruiter roles, and password hashes all rebuilt from <code>data/users.seed.json</code>.</p>
+        <h3 class="label">Files touched</h3>
+        <div class="filelist"><span class="file">.env</span><span class="file">scripts/seed-sandbox-users.js</span></div>
+      </section>
+
+      <section class="card" id="perf">
+        <div class="card-head"><h2>Fixing slow and failing job loads</h2><span class="tag fix">Fixed</span></div>
+        <h3 class="label">The problem</h3>
+        <p>Recruiters with 100+ jobs hit two failures: a <code>"Maximum allowed jobId is 100"</code> error from JobDiva, and request storms that tripped JobDiva's rate limit (<code>429</code>), with one case taking over four minutes to load.</p>
+        <h3 class="label">What we changed</h3>
+        <ul>
+          <li>Chunked the <code>JobsContacts</code> / <code>JobsInternalUsersDetail</code> calls into batches of 50, matching the limit JobsDetail already respected.</li>
+          <li>Added a 60-second in-memory cache for a recruiter's job list, so repeat page loads don't re-hit JobDiva.</li>
+          <li>Added automatic retry with backoff on <code>429</code> responses.</li>
+          <li>Capped the job-activity timeline to the most recent 30 two-week windows, so an old job doesn't trigger hundreds of API calls just to render its history.</li>
+        </ul>
+        <h3 class="label">Files touched</h3>
+        <div class="filelist"><span class="file">server/services/ats.service.js</span></div>
+      </section>
+
+      <section class="card" id="submittals">
+        <div class="card-head"><h2>Submittals detail page</h2><span class="tag build">Built</span></div>
+        <p>New dashboard drill-down showing every candidate submittal across a recruiter's jobs — candidate, internal/external type, job, client, stage, and date — with Today/Week/Month/Custom filters and an Internal/External toggle. Pulled from JobDiva's <code>JobsSubmittalsDetail</code> feed, with candidate names resolved in batched <code>CandidatesDetail</code> calls rather than one-by-one.</p>
+        <h3 class="label">Tools &amp; endpoints</h3>
+        <div class="toolrow"><span class="pill">JobsSubmittalsDetail</span><span class="pill">CandidatesDetail (bulk)</span></div>
+        <h3 class="label">Files touched</h3>
+        <div class="filelist"><span class="file">server/services/ats.service.js</span><span class="file">server/routes/api.routes.js</span><span class="file">public/js/pages/submittals.js</span><span class="file">public/js/services/api.service.js</span></div>
+      </section>
+
+      <section class="card" id="derived">
+        <div class="card-head"><h2>Interviews, Starts, FPS &amp; My Primary Jobs</h2><span class="tag build">Built</span></div>
+        <p>Four more dashboard drill-downs, all derived from the same Submittals data already fetched — so none of them cost an extra JobDiva API call:</p>
+        <ul>
+          <li><b>Interviews</b> — submittals with an interview date set.</li>
+          <li><b>Starts</b> — submittals with a start date, with status worked out from start/end/termination dates (Active, Ended, Unapproved) plus a "Filter Candidates" row (Active / On Bench / Ending in 30 Days / Unapproved).</li>
+          <li><b>FPS (First Presentation Success)</b> — the earliest submittal per candidate+job pair, since JobDiva has no separate "first presentation" field of its own.</li>
+          <li><b>My Primary Jobs</b> — submittals where the recruiter is JobDiva's own <code>PRIMARYRECRUITERID</code> on that record.</li>
+        </ul>
+        <h3 class="label">Files touched</h3>
+        <div class="filelist"><span class="file">server/services/ats.service.js</span><span class="file">public/js/pages/interviews.js</span><span class="file">public/js/pages/starts.js</span><span class="file">public/js/pages/first-presentations.js</span><span class="file">public/js/pages/my-primary-jobs.js</span><span class="file">public/js/components/record-detail-shared.js</span></div>
+      </section>
+
+      <section class="card" id="tiles">
+        <div class="card-head"><h2>Wiring the dashboard tiles to real data</h2><span class="tag build">Built</span></div>
+        <p>The dashboard's Submittals / Interviews / Starts / FPS / My Primary Jobs tiles used to show static demo numbers. They now fetch live data once per page load and recompute on every date-range change, client-side, with no extra network round trip.</p>
+        <h3 class="label">Files touched</h3>
+        <div class="filelist"><span class="file">public/js/pages/dashboard.js</span></div>
+      </section>
+
+      <section class="card" id="datebug">
+        <div class="card-head"><h2>Fixing the "today" filter showing future dates</h2><span class="tag fix">Fixed</span></div>
+        <h3 class="label">The problem</h3>
+        <p>With "Today" selected, a record dated weeks into the future (a scheduled interview, a future placement start) still showed up — because the filter only checked <code>date ≥ start of today</code>, with no upper bound.</p>
+        <h3 class="label">The fix</h3>
+        <p>Added an upper bound — <code>date &lt; start of tomorrow</code> — to Today, This Week and This Month, so each is a proper trailing window ending now, not open-ended into the future. Verified against synthetic dates at every boundary (today, 6/8/29/31 days ago, and several future dates) before and after the fix.</p>
+        <h3 class="label">Files touched</h3>
+        <div class="filelist"><span class="file">public/js/components/record-detail-shared.js</span><span class="file">public/js/pages/submittals.js</span></div>
+      </section>
+
+      <section class="card" id="targets">
+        <div class="card-head"><h2>Progress bars that actually move</h2><span class="tag fix">Fixed</span></div>
+        <h3 class="label">The problem</h3>
+        <p>Two bugs: the progress bar under each tile was drawn once from old placeholder numbers and never recalculated once real data loaded, and the "Target" number was a fixed value regardless of whether Today, This Week or This Month was selected.</p>
+        <h3 class="label">The fix</h3>
+        <p>Each tile's bar and target now update together, every time data loads or the range changes. Targets scale with the range (e.g. Submittals: 1 / 6 / 24 for Today / Week / Month). Selecting Custom Date hides the target and bar entirely — there's no sensible fixed target for an arbitrary date range, so it just shows the count.</p>
+        <h3 class="label">Files touched</h3>
+        <div class="filelist"><span class="file">public/js/pages/dashboard.js</span></div>
+      </section>
+
+      <section class="card" id="priority">
+        <div class="card-head"><h2>Priority shows JobDiva's own value — and salary moved out</h2><span class="tag fix">Fixed</span></div>
+        <p>Job priority used to be translated into a word ("MEDIUM") based on a guess, including defaulting empty values to "medium" — which is how one job with no priority set in JobDiva ended up misleadingly labeled. Priority now displays exactly what JobDiva sends (a raw code like <code>1</code> or <code>C</code>, or a dash if JobDiva has nothing set), with no color applied to it anywhere in the app. The Salary row was removed from the job detail view; Bill Rate and Pay Rate already cover that ground.</p>
+        <h3 class="label">Files touched</h3>
+        <div class="filelist"><span class="file">server/services/ats.service.js</span><span class="file">public/js/pages/job-detail.js</span><span class="file">public/js/pages/jobs.js</span><span class="file">public/js/pages/dashboard.js</span></div>
+      </section>
+
+      <section class="card" id="hyperlink">
+        <div class="card-head"><h2>Job title links out to JobDiva</h2><span class="tag build">Built</span></div>
+        <p>On the job detail page only, the job title is now a link to that exact job's record in JobDiva's own web console, opening in a new tab. It reads as plain text at rest and turns the app's accent blue with an underline on hover, so it doesn't look like a link until you reach for it. Every other place a job title appears — the Jobs list, the dashboard's Recent Jobs — stays untouched.</p>
+        <h3 class="label">Files touched</h3>
+        <div class="filelist"><span class="file">public/js/pages/job-detail.js</span><span class="file">public/css/main.css</span></div>
+      </section>
+
+      <section class="card" id="gridlist">
+        <div class="card-head"><h2>Grid to list, by scroll position</h2><span class="tag build">Built</span></div>
+        <p>For recruiters with more than 12 jobs, the Jobs page starts as a grid of cards. Scroll past where the 12th card ends, and the whole list switches to a compact row view — a colored strip per row matching the job's status, then title, client, location, status, priority, recruiter, and posted date. Scroll back up past that same point and it switches back to the grid. A small buffer zone stops it flickering right at the boundary.</p>
+        <h3 class="label">Files touched</h3>
+        <div class="filelist"><span class="file">public/js/pages/jobs.js</span></div>
+      </section>
+
+    </main>
+  </div>
+
+  <footer>TalentOps Demo — internal build log, generated from this session's work.</footer>
+</div>

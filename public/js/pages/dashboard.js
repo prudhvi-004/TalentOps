@@ -11,16 +11,24 @@
 
 const DashboardPage = (() => {
 
-  const DUMMY_METRICS = {
-    submittals:  14, interviews: 6,
-    starts: 2, fps: 3, talkTimeSec: 5400,
-  };
-  const TARGETS = {
-    submittals: 20, interviews: 10,
-    starts: 3, fps: 5, talkTimeSec: 7200,
+  const DUMMY_METRICS = { talkTimeSec: 5400 };
+  const TARGETS = { talkTimeSec: 7200 };
+
+  // Targets scale with the selected date range — a recruiter's daily goal
+  // is naturally smaller than their monthly goal. 'custom' has no target:
+  // a custom range is an arbitrary window, so there's nothing sensible to
+  // measure it against — those tiles just show the raw count.
+  const RANGE_TARGETS = {
+    submittals: { today: 1, week: 6, month: 24 },
+    interviews: { today: 1, week: 1, month: 4 },
+    starts:     { today: 1, week: 1, month: 1 },
+    fps:        { today: 1, week: 2, month: 5 },
   };
 
   let activeDateRange = 'today';
+  // Raw (unfiltered) records fetched once per page load; date-range button
+  // clicks just re-filter this cached data client-side — no re-fetch needed.
+  let rawData = { submittals: [], interviews: [], starts: [], fps: [], myPrimary: [] };
 
   function render(container) {
     const m = DUMMY_METRICS;
@@ -70,10 +78,10 @@ const DashboardPage = (() => {
            class="tile-grid"
            style="grid-template-columns:repeat(auto-fill,minmax(190px,1fr));
                   margin-bottom:28px">
-        ${perfTile('Submittals','submittals',m.submittals,TARGETS.submittals,'/jobs')}
-        ${perfTile('Interviews','interviews',m.interviews,TARGETS.interviews,'/candidates')}
-        ${perfTile('Starts','starts',m.starts,TARGETS.starts,'/candidates')}
-        ${perfTile('First Presentation','fps',m.fps,TARGETS.fps,'/candidates')}
+        ${perfTile('Submittals','submittals','/submittals')}
+        ${perfTile('Interviews','interviews','/interviews')}
+        ${perfTile('Starts','starts','/starts')}
+        ${perfTile('FPS','fps',null)}
         ${talkTimeTile(m.talkTimeSec, talkAchieved)}
         ${openJobsTile()}
         ${myPrimaryJobsTile()}
@@ -90,7 +98,8 @@ const DashboardPage = (() => {
         </div>
       </div>`;
 
-    // Date range filter buttons
+    // Date range filter buttons — re-filters the already-fetched tile data,
+    // so switching ranges is instant (no re-fetch from the server).
     container.querySelectorAll('[data-range]').forEach(btn => {
       btn.onclick = () => {
         activeDateRange = btn.dataset.range;
@@ -99,11 +108,12 @@ const DashboardPage = (() => {
         });
         const customInputs = document.getElementById('customDateInputs');
         customInputs.style.display = activeDateRange === 'custom' ? 'flex' : 'none';
-        // In production: re-fetch metrics with new date range
-        // For demo: just shows the filter is interactive
         showToast(`Showing: ${btn.textContent.trim()}`);
+        applyDateRangeToTiles();
       };
     });
+    document.getElementById('dateFrom').onchange = applyDateRangeToTiles;
+    document.getElementById('dateTo').onchange = applyDateRangeToTiles;
 
     // Tile navigation clicks
     container.querySelectorAll('[data-nav]').forEach(el => {
@@ -111,20 +121,92 @@ const DashboardPage = (() => {
     });
 
     loadRecentJobs();
+    loadTileData();
   }
 
-  function perfTile(label, key, val, target, navTo) {
-    const pct = Math.min(100, Math.round((val / target) * 100));
+  async function loadTileData() {
+    await loadScript('/js/components/record-detail-shared.js');
+
+    const [submittals, interviews, starts, fps, myPrimary] = await Promise.all([
+      ApiService.getSubmittals(),
+      ApiService.getInterviews(),
+      ApiService.getStarts(),
+      ApiService.getFirstPresentations(),
+      ApiService.getMyPrimaryJobRecords(),
+    ]);
+
+    rawData = {
+      submittals: submittals.success ? submittals.data : [],
+      interviews: interviews.success ? interviews.data : [],
+      starts: starts.success ? starts.data : [],
+      fps: fps.success ? fps.data : [],
+      myPrimary: myPrimary.success ? myPrimary.data : [],
+    };
+
+    applyDateRangeToTiles();
+  }
+
+  // Re-filters the cached tile data against the currently selected date
+  // range and updates each tile's displayed count. Called on initial load
+  // and every time the Date Range selection changes.
+  function applyDateRangeToTiles() {
+    const filterByRange = rows => rows.filter(r => RecordDetailShared.inRange(r.dateRaw, activeDateRange));
+
+    updatePerfTile('submittals', filterByRange(rawData.submittals).length);
+    updatePerfTile('interviews', filterByRange(rawData.interviews).length);
+    updatePerfTile('starts', filterByRange(rawData.starts).length);
+    updatePerfTile('fps', filterByRange(rawData.fps).length);
+    setTileCount('myPrimaryCount', new Set(filterByRange(rawData.myPrimary).map(r => r.jobId)).size);
+  }
+
+  function setTileCount(elId, value) {
+    const el = document.getElementById(elId);
+    if (el) el.textContent = value;
+  }
+
+  // navTo === null renders a disabled, greyed-out tile that does not
+  // navigate anywhere when clicked (used for FPS and Talk Time — demo
+  // metrics with no dedicated detail view). Starts at 0/—; updatePerfTile()
+  // fills in the real value, target and bar once data loads.
+  function perfTile(label, key, navTo) {
+    const disabled = navTo == null;
     return `
-      <div class="perf-tile" data-nav="${navTo}" style="cursor:pointer">
+      <div class="perf-tile" ${disabled ? '' : `data-nav="${navTo}"`}
+           style="${disabled ? 'cursor:not-allowed;opacity:.55' : 'cursor:pointer'}">
         <div class="perf-label">${label}</div>
-        <div class="perf-value">${val}</div>
-        <div class="perf-target">Target: ${target}</div>
-        <div class="progress-bar">
-          <div class="progress-fill ${pct >= 100 ? 'done' : ''}"
-               style="width:${pct}%"></div>
+        <div class="perf-value" id="perfValue-${key}">0</div>
+        <div class="perf-target" id="perfTarget-${key}"></div>
+        <div class="progress-bar" id="perfBarWrap-${key}">
+          <div class="progress-fill" id="perfBar-${key}" style="width:0%"></div>
         </div>
       </div>`;
+  }
+
+  // Updates one performance tile's number, target label and progress-bar
+  // fill to match the currently selected date range. Called on initial load
+  // and every time Today/Week/Month/Custom changes.
+  function updatePerfTile(key, value) {
+    const valueEl = document.getElementById(`perfValue-${key}`);
+    const targetEl = document.getElementById(`perfTarget-${key}`);
+    const barWrapEl = document.getElementById(`perfBarWrap-${key}`);
+    const barEl = document.getElementById(`perfBar-${key}`);
+    if (!valueEl) return;
+
+    valueEl.textContent = value;
+
+    const target = RANGE_TARGETS[key] ? RANGE_TARGETS[key][activeDateRange] : undefined;
+    if (!target) {
+      // Custom range (or no target defined): just show the raw count.
+      targetEl.textContent = '';
+      barWrapEl.style.display = 'none';
+      return;
+    }
+
+    barWrapEl.style.display = '';
+    const pct = Math.min(100, Math.round((value / target) * 100));
+    targetEl.textContent = `Target: ${target}`;
+    barEl.style.width = `${pct}%`;
+    barEl.classList.toggle('done', pct >= 100);
   }
 
   function talkTimeTile(sec, achieved) {
@@ -132,7 +214,7 @@ const DashboardPage = (() => {
     const min = Math.floor((sec % 3600) / 60);
     const pct = Math.min(100, Math.round((sec / TARGETS.talkTimeSec) * 100));
     return `
-      <div class="perf-tile" data-nav="/">
+      <div class="perf-tile" style="cursor:not-allowed;opacity:.55">
         <div class="perf-label">Talk Time (Daily)</div>
         ${achieved
           ? `<div class="perf-value">${h}h ${min}m</div>
@@ -162,7 +244,7 @@ const DashboardPage = (() => {
 
   function myPrimaryJobsTile() {
     return `
-      <div class="perf-tile" data-nav="/jobs"
+      <div class="perf-tile" data-nav="/my-primary-jobs"
            style="border-left:4px solid var(--success)">
         <div class="perf-label">My Primary Jobs</div>
         <div class="perf-value" id="myPrimaryCount">—</div>
@@ -190,10 +272,6 @@ const DashboardPage = (() => {
     const openEl = document.getElementById('openJobsCount');
     if (openEl) openEl.textContent = openJobs.length;
 
-    // Update My Primary Jobs tile count (demo: all jobs as primary)
-    const primaryEl = document.getElementById('myPrimaryCount');
-    if (primaryEl) primaryEl.textContent = jobs.length;
-
     // Render recent job tiles
     grid.innerHTML = jobs.slice(0, 4).map(job => `
       <div class="tile fade-in" data-job="${job.id}" style="cursor:pointer">
@@ -203,8 +281,7 @@ const DashboardPage = (() => {
         </div>
         <div class="tile-client">🏢 ${job.client} · 📍 ${job.location}</div>
         <div style="margin-top:6px">
-          <span class="chip chip-${job.priority}">${job.priority}</span>
-          <span style="font-size:12px;color:var(--text-muted);margin-left:6px">
+          <span style="font-size:12px;color:var(--text-muted)">
             ${job.salary}
           </span>
         </div>

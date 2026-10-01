@@ -72,6 +72,36 @@ const ApiService = (() => {
   }
 
   /**
+   * getSubmittals()
+   * Fetches all submittals across every job assigned to the logged-in
+   * recruiter (scoped server-side by their JobDiva USERID).
+   * Server route: GET /api/submittals
+   */
+  async function getSubmittals() {
+    return request('/api/submittals');
+  }
+
+  /** getInterviews() — GET /api/interviews */
+  async function getInterviews() {
+    return request('/api/interviews');
+  }
+
+  /** getStarts() — GET /api/starts */
+  async function getStarts() {
+    return request('/api/starts');
+  }
+
+  /** getFirstPresentations() — GET /api/first-presentations */
+  async function getFirstPresentations() {
+    return request('/api/first-presentations');
+  }
+
+  /** getMyPrimaryJobRecords() — GET /api/my-primary-jobs */
+  async function getMyPrimaryJobRecords() {
+    return request('/api/my-primary-jobs');
+  }
+
+  /**
    * search(query)
    * Global search across jobs and candidates.
    * Server route: GET /api/search?q=...
@@ -165,6 +195,11 @@ const ApiService = (() => {
   ----------------------------------------------------------- */
   return {
     getJobs,
+    getSubmittals,
+    getInterviews,
+    getStarts,
+    getFirstPresentations,
+    getMyPrimaryJobRecords,
     search,
     getJobById,
     getJobActivity,

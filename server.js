@@ -84,7 +84,7 @@ app.use('/api/admin', requireLogin, requireRole('ADMIN'), adminRoutes);
 app.use('/api', apiRoutes);
 
 const shell = (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html'));
-['/', '/index.html', '/jobs', '/candidates', '/tasks', '/team', '/clients'].forEach(route => app.get(route, requireLogin, shell));
+['/', '/index.html', '/jobs', '/candidates', '/submittals', '/interviews', '/starts', '/first-presentations', '/my-primary-jobs', '/tasks', '/team', '/clients'].forEach(route => app.get(route, requireLogin, shell));
 app.get('/admin', requireLogin, requireRole('ADMIN'), shell);
 app.get('/jobs/:id', requireLogin, shell);
 app.get('/candidates/:id', requireLogin, shell);
