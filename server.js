@@ -1,122 +1,107 @@
 // =============================================================
-// SERVER.JS — MAIN APPLICATION ENTRY POINT
+// TalentOps application server
 // =============================================================
-// Purpose:
-//   Starts the Express web server.
-//   Wires together all routes, middleware, and static files.
-//   This is the file you run to start the application.
-//
-// Start command:
-//   node server.js
-//
-// Then open browser to:
-//   http://localhost:3000
-// =============================================================
-
 require('dotenv').config();
+
+const dns = require('dns');
+
+// Development-only workaround for MongoDB Atlas SRV DNS resolution.
+// Your current machine's default DNS resolver is refusing SRV queries,
+// while 1.1.1.1 and 8.8.8.8 resolve the Atlas cluster correctly.
+if (
+  process.env.NODE_ENV === 'development' &&
+  process.env.MONGODB_URI?.startsWith('mongodb+srv://')
+) {
+  const servers = (
+    process.env.MONGODB_DNS_SERVERS || '1.1.1.1,8.8.8.8'
+  )
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+
+  dns.setServers(servers);
+  console.log(`[startup] MongoDB DNS servers: ${servers.join(', ')}`);
+}
+
+const AUTH_PROVIDER = String(process.env.AUTH_PROVIDER || 'local').trim().toLowerCase();
+if (!['local', 'oidc'].includes(AUTH_PROVIDER)) {
+  console.error('AUTH_PROVIDER must be local or oidc.');
+  process.exit(1);
+}
+if (AUTH_PROVIDER === 'local' && process.env.NODE_ENV === 'production') {
+  console.error('Sandbox local authentication is not permitted in production.');
+  process.exit(1);
+}
+const REQUIRED_ENV = ['SESSION_SECRET', 'MONGODB_URI', 'MONGODB_DB'];
+if (AUTH_PROVIDER === 'oidc') REQUIRED_ENV.push('OIDC_ISSUER_URL', 'OIDC_CLIENT_ID', 'OIDC_CLIENT_SECRET', 'OIDC_REDIRECT_URI');
+const missing = REQUIRED_ENV.filter(key => !process.env[key]);
+if (missing.length) {
+  console.error(`Missing required environment variables: ${missing.join(', ')}`);
+  process.exit(1);
+}
+if (process.env.SESSION_SECRET.length < 32) {
+  console.error('SESSION_SECRET must be at least 32 characters.');
+  process.exit(1);
+}
+if (AUTH_PROVIDER === 'local' && process.env.SANDBOX_DEFAULT_PASSWORD.length < 12) {
+  console.error('SANDBOX_DEFAULT_PASSWORD must be at least 12 characters.');
+  process.exit(1);
+}
+
 const express = require('express');
 const session = require('express-session');
 const cors = require('cors');
 const path = require('path');
-
-const authRoutes = require('./server/routes/auth.routes');
+const userStore = require('./server/services/recruiter.store');
+const localAuthRoutes = require('./server/routes/local-auth.routes');
+const oidcAuthRoutes = require('./server/routes/auth.routes');
+const adminRoutes = require('./server/routes/admin.routes');
 const apiRoutes = require('./server/routes/api.routes');
-const { requireLogin } = require('./server/middleware/auth');
+const { requireLogin, requireRole } = require('./server/middleware/auth');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const secureCookie = process.env.NODE_ENV === 'production' || /^https:/i.test(process.env.OIDC_REDIRECT_URI || '');
+if (process.env.TRUST_PROXY) app.set('trust proxy', 1);
 
-// ----------------------------------------------------------
-// MIDDLEWARE SETUP
-// ----------------------------------------------------------
-
-// Parse incoming JSON request bodies
 app.use(express.json());
-
-// Parse URL-encoded form data (login form submissions)
 app.use(express.urlencoded({ extended: true }));
-
-// Allow cross-origin requests (needed if frontend ever
-// runs on a different port than the server)
 app.use(cors());
-
-// Session configuration
-// Sessions keep the user logged in between page navigations.
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'change_this_secret',
+  name: 'talentops.sid',
+  secret: process.env.SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
-  cookie: {
-    // Session lasts 8 hours (enough for a full demo day)
-    maxAge: 8 * 60 * 60 * 1000,
-    httpOnly: true,    // Prevents JavaScript from reading cookie
-    secure: false,     // Set to true if using HTTPS in production
-  },
+  cookie: { maxAge: 8 * 60 * 60 * 1000, httpOnly: true, sameSite: 'lax', secure: secureCookie },
 }));
 
-// ----------------------------------------------------------
-// STATIC FILES
-// Serve everything in /public directly to the browser.
-// /public/css/  → http://localhost:3000/css/
-// /public/js/   → http://localhost:3000/js/
-// ----------------------------------------------------------
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), { index: false }));
+app.use('/', AUTH_PROVIDER === 'local' ? localAuthRoutes : oidcAuthRoutes);
 
-// ----------------------------------------------------------
-// ROUTES
-// ----------------------------------------------------------
-
-// Auth routes (login page + login/logout actions)
-// These do NOT require login — they ARE the login flow.
-app.use('/', authRoutes);
-
-// API routes (all data endpoints for the frontend)
-// requireLogin is applied inside api.routes.js
+app.get('/api/auth/config', (req, res) => res.json({ developmentMockAuth: false, sandboxLocalAuth: AUTH_PROVIDER === 'local' }));
+app.get('/api/me', requireLogin, (req, res) => res.json({ success: true, data: req.user }));
+app.use('/api/admin', requireLogin, requireRole('ADMIN'), adminRoutes);
 app.use('/api', apiRoutes);
 
-// ----------------------------------------------------------
-// MAIN APP PAGES
-// All pages below require the user to be logged in.
-// Each route serves the same index.html shell.
-// The frontend JavaScript handles what content to show
-// based on the current URL path.
-// ----------------------------------------------------------
-const pages = ['/', '/jobs', '/candidates', '/tasks', '/team', '/clients', '/admin'];
+const shell = (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html'));
+['/', '/index.html', '/jobs', '/candidates', '/submittals', '/interviews', '/starts', '/first-presentations', '/my-primary-jobs', '/tasks', '/team', '/clients'].forEach(route => app.get(route, requireLogin, shell));
+app.get('/admin', requireLogin, requireRole('ADMIN'), shell);
+app.get('/jobs/:id', requireLogin, shell);
+app.get('/candidates/:id', requireLogin, shell);
+app.use((req, res) => res.status(404).json({ error: 'Route not found' }));
 
-pages.forEach(page => {
-  app.get(page, requireLogin, (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+async function start() {
+  await userStore.connect();
+  if (AUTH_PROVIDER === 'local') {
+    console.warn('SANDBOX local authentication enabled. Never use this mode in production. Run npm run seed:users after configuring the seed settings.');
+  }
+  app.listen(PORT, () => {
+    console.log(`TalentOps running on http://localhost:${PORT}`);
+    console.log(`ATS Provider: ${process.env.ATS_PROVIDER || 'mock'} | Auth provider: ${AUTH_PROVIDER}`);
   });
-});
+}
 
-// Job detail and candidate profile are dynamic routes
-app.get('/jobs/:id', requireLogin, (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-app.get('/candidates/:id', requireLogin, (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-// ----------------------------------------------------------
-// 404 HANDLER
-// Catches any route not matched above.
-// ----------------------------------------------------------
-app.use((req, res) => {
-  res.status(404).json({ error: 'Route not found' });
-});
-
-// ----------------------------------------------------------
-// START SERVER
-// ----------------------------------------------------------
-app.listen(PORT, () => {
-  console.log('');
-  console.log('╔═══════════════════════════════════════════╗');
-  console.log('║        TalentOps Demo — Running           ║');
-  console.log(`║   http://localhost:${PORT}                   ║`);
-  console.log('║                                           ║');
-  console.log(`║   ATS Provider: ${process.env.ATS_PROVIDER || 'mock'}                     ║`);
-  console.log('║   Login: demo / talentops2024             ║');
-  console.log('╚═══════════════════════════════════════════╝');
-  console.log('');
+start().catch(error => {
+  console.error('[startup] Could not initialize authentication:', error.message);
+  process.exit(1);
 });

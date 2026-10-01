@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>TalentOps — Access</title>
+  <link rel="stylesheet" href="/css/main.css"/>
+</head>
+<body class="login-body">
+  <div class="login-screen"><div class="login-card">
+    <div class="login-logo"><div class="logo-icon">T</div><span class="logo-text">TalentOps</span></div>
+    <h1 class="login-title" id="title">Access denied</h1>
+    <p class="login-sub" id="msg"></p>
+    <a class="btn btn-primary btn-full" href="/auth/login" style="text-decoration:none">Sign in</a>
+    <p class="login-footer" id="home" style="display:none"><a href="/">Back to TalentOps</a></p>
+  </div></div>
+  <script>
+    const M = {
+      not_provisioned: ['Access denied', 'Your account is authenticated but has not been granted TalentOps access. Contact a TalentOps administrator.'],
+      inactive: ['Access disabled', 'Your TalentOps access has been deactivated. Contact a TalentOps administrator.'],
+      identity: ['Access denied', 'This account does not match the identity registered for this user. Contact an administrator.'],
+      unverified: ['Access denied', 'Your email address is not verified with the identity provider.'],
+      forbidden: ['Not authorized', 'You do not have permission to view that page.'],
+      session: ['Sign-in expired', 'Your sign-in attempt expired or was invalid. Please try again.'],
+      idp: ['Sign-in failed', 'The identity provider reported an error. Please try again.'],
+      provider: ['Sign-in unavailable', 'The identity provider could not be reached. Try again shortly.'],
+      error: ['Sign-in failed', 'We could not complete sign-in. Please try again.'],
+      signedout: ['Signed out', 'You have been signed out of TalentOps.'],
+    };
+    const r = new URLSearchParams(location.search).get('reason');
+    const [t, m] = M[r] || M.error;
+    document.getElementById('title').textContent = t;
+    document.getElementById('msg').textContent = m;
+    if (r === 'forbidden') document.getElementById('home').style.display = '';
+  </script>
+</body>
+</html>

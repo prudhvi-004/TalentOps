@@ -15,13 +15,6 @@
 
 require('dotenv').config();
 
-console.log(
-  '[JobDiva Config Diagnostic]',
-  {
-    envRecruiterId: process.env.JOBDIVA_RECRUITER_ID,
-  }
-);
-
 const ATS_CONFIGS = {
 
   // -----------------------------------------------------------
@@ -127,7 +120,6 @@ const ATS_CONFIGS = {
     clientId: process.env.JOBDIVA_CLIENT_ID,
     username: process.env.JOBDIVA_USERNAME,
     password: process.env.JOBDIVA_PASSWORD,
-    recruiterId: process.env.JOBDIVA_RECRUITER_ID,
     authType: 'jobdiva-v2',
     endpoints: {
       // CandidateActionsUsingGET belongs to V1 DataRetrieval.

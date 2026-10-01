@@ -40,6 +40,18 @@ const JobDetailPage = (() => {
     return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;').replace(/'/g, '&#039;');
   }
 
+  // The job title heading (and only the heading) links out to the real
+  // JobDiva job record, opened in a new tab. Every other place a job title
+  // appears (Jobs list, Dashboard tiles, etc.) stays plain text/in-app nav.
+  function jobDivaJobUrl(jobId) {
+    return `https://www2.jobdiva.com/employers/myjobs/vieweditjobform.jsp?lstjobs=1&jobid=${encodeURIComponent(jobId)}&time=${Date.now()}`;
+  }
+
+  function jobTitleLink(job) {
+    return `<a href="${jobDivaJobUrl(job.id)}" target="_blank" rel="noopener noreferrer"
+               class="job-title-link" title="Open in JobDiva">${escapeHtml(job.title)}</a>`;
+  }
+
   function formatDate(value) {
     if (!value) return '—';
     const d = new Date(value);
@@ -209,7 +221,7 @@ const JobDetailPage = (() => {
         <div class="page-header">
           <div>
             <div class="page-title">
-              ${j.title}
+              ${jobTitleLink(j)}
               <span style="font-size:13px;color:var(--text-muted);font-weight:400;margin-left:6px">
                 (${j.atsId || ''})
               </span>
@@ -254,12 +266,8 @@ const JobDetailPage = (() => {
             <span>${j.location}</span>
           </div>
           <div class="detail-row">
-            <span class="detail-label">Salary</span>
-            <span>${j.salary || '—'}</span>
-          </div>
-          <div class="detail-row">
             <span class="detail-label">Priority</span>
-            <span><span class="chip chip-${j.priority}">${j.priority}</span></span>
+            <span>${j.priority || '—'}</span>
           </div>
           <div class="detail-row">
             <span class="detail-label">Status</span>
@@ -514,7 +522,7 @@ const JobDetailPage = (() => {
         <div class="page-header">
           <div>
             <div class="page-title">
-              ${j.title}
+              ${jobTitleLink(j)}
               <span style="font-size:13px;color:var(--text-muted);font-weight:400;margin-left:6px">
                 (${j.atsId || ''})
               </span>
@@ -691,12 +699,8 @@ const JobDetailPage = (() => {
           <span>${j.location}</span>
         </div>
         <div class="detail-row">
-          <span class="detail-label">Salary</span>
-          <span>${j.salary || '—'}</span>
-        </div>
-        <div class="detail-row">
           <span class="detail-label">Priority</span>
-          <span><span class="chip chip-${j.priority}">${j.priority}</span></span>
+          <span>${j.priority || '—'}</span>
         </div>
         <div class="detail-row">
           <span class="detail-label">Hiring Mgr</span>

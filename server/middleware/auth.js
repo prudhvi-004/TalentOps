@@ -1,42 +1,46 @@
-// =============================================================
-// AUTH MIDDLEWARE — auth.js
-// =============================================================
-// Purpose:
-//   Protects all routes that require a logged-in user.
-//   If someone tries to access /dashboard without logging in,
-//   they get redirected to the login page.
-//
-// How it works:
-//   Express attaches req.session to every request.
-//   After login, we store req.session.user = { username }.
-//   This middleware checks if that session value exists.
-//   If yes → allow request through.
-//   If no  → redirect to /login.
-//
-// Used in:
-//   server.js — applied to all protected routes
-// =============================================================
+// Session + role enforcement. The session stores only the recruiter id;
+// role/active status are re-read from the store on EVERY request so
+// deactivation and demotion take effect immediately.
+const store = require('../services/recruiter.store');
+const requestContext = require('../services/request-context');
 
-/**
- * requireLogin
- * Middleware function that blocks unauthenticated requests.
- * Attach this to any route that needs protection.
- *
- * @param {object} req - Express request object
- * @param {object} res - Express response object
- * @param {function} next - Call next() to continue to the route
- */
-function requireLogin(req, res, next) {
-  // Check if a user session exists
-  if (req.session && req.session.user) {
-    // User is logged in — let them through
-    return next();
+const isApi = req => req.originalUrl.startsWith('/api/');
+
+async function requireLogin(req, res, next) {
+  const sid = req.session && req.session.user && req.session.user.id;
+  let rec;
+  try { rec = sid ? await store.findById(sid) : null; }
+  catch (error) {
+    console.error('[auth] User lookup failed:', error.message);
+    return res.status(503).json({ success: false, error: 'Authentication service unavailable' });
   }
 
-  // No session found — redirect to login page
-  // req.originalUrl captures where they were trying to go,
-  // so after login we can send them back there if needed.
-  return res.redirect('/login');
+  if (!rec || !rec.active) {
+    const finish = () => {
+      if (isApi(req)) {
+        return res.status(401).json({ success: false, error: 'Authentication required', code: 'UNAUTHENTICATED' });
+      }
+      return res.redirect('/auth/login?returnTo=' + encodeURIComponent(req.originalUrl));
+    };
+    if (req.session && sid) return req.session.destroy(finish); // revoked/removed
+    return finish();
+  }
+
+  req.user = {
+    id: rec.id, email: rec.email, name: rec.name, role: rec.role,
+    jobdivaUserId: rec.jobdivaUserId,
+    jobdivaRecruiterId: rec.jobdivaUserId || '',
+    active: rec.active,
+  };
+  requestContext.run(req.user, next);
 }
 
-module.exports = { requireLogin };
+function requireRole(...roles) {
+  return (req, res, next) => {
+    if (req.user && roles.includes(req.user.role)) return next();
+    if (isApi(req)) return res.status(403).json({ success: false, error: 'Forbidden' });
+    return res.redirect('/auth/denied?reason=forbidden');
+  };
+}
+
+module.exports = { requireLogin, requireRole };

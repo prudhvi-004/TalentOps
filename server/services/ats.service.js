@@ -32,6 +32,14 @@ const path = require('path');
 const fs = require('fs');
 const fetch = require('node-fetch');
 const { active: config, provider } = require('../config/ats.config');
+const requestContext = require('./request-context');
+
+function currentJobDivaUserId() {
+  const user = requestContext.currentUser();
+  const id = user && user.jobdivaUserId;
+  if (!id || !/^\d+$/.test(String(id))) throw new Error('The authenticated TalentOps user is missing a valid JobDiva USERID.');
+  return Number(id);
+}
 
 function loadMockData(filename) {
   const filePath = path.join(__dirname, '../../data', filename);
@@ -47,6 +55,14 @@ let authToken = null;
 let tokenExpiry = 0;
 const jobActivityCache = new Map();
 const JOB_ACTIVITY_CACHE_MS = 60 * 1000;
+// getJobs() fans out into several BI calls per recruiter (list + chunked
+// detail/contacts/users). Without a cache, fast repeat navigation (job list
+// -> job detail -> back) re-runs all of it and can trip JobDiva's rate limit
+// (429 Request Limit Exceeded), especially for recruiters with 100+ jobs.
+const jobsListCache = new Map();
+const JOBS_LIST_CACHE_MS = 60 * 1000;
+const submittalsCache = new Map();
+const SUBMITTALS_CACHE_MS = 60 * 1000;
 
 function requireJobDivaConfig() {
   if (!config.baseUrl || !config.clientId || !config.username || !config.password) {
@@ -185,7 +201,10 @@ async function requestJobDiva(pathname, options = {}, retry = true) {
   return parseResponse(response);
 }
 
-async function requestJobDivaGet(pathname, params = {}) {
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+const JOBDIVA_MAX_429_RETRIES = 4;
+
+async function requestJobDivaGet(pathname, params = {}, retriesLeft = JOBDIVA_MAX_429_RETRIES) {
   const token = await getAuthToken();
   const url = withQuery(pathname, params);
   let response = await fetch(url, {
@@ -201,6 +220,14 @@ async function requestJobDivaGet(pathname, params = {}) {
       method: 'GET',
       headers: { Accept: 'application/json', Authorization: freshToken },
     });
+  }
+
+  // JobDiva's sandbox rate-limits bursty traffic. Back off briefly and retry
+  // instead of surfacing a hard failure for what is usually a transient limit.
+  if (response.status === 429 && retriesLeft > 0) {
+    const attempt = JOBDIVA_MAX_429_RETRIES - retriesLeft + 1;
+    await sleep(800 * attempt);
+    return requestJobDivaGet(pathname, params, retriesLeft - 1);
   }
 
   return parseResponse(response);
@@ -238,7 +265,15 @@ function normalizeStatus(value) {
   return 'open';
 }
 
-function normalizePriority(value) {
+// The app displays JobDiva's PRIORITY field exactly as JobDiva sends it
+// (a number, e.g. "1") rather than translating it into a word. priorityLevel()
+// below only buckets it into high/medium/low for the Jobs page's filter dropdown.
+function rawPriority(value) {
+  if (value === undefined || value === null) return '';
+  return String(value).trim();
+}
+
+function priorityLevel(value) {
   if (value === undefined || value === null || value === '') return 'medium';
 
   const text = String(value).trim().toLowerCase();
@@ -501,7 +536,10 @@ function normalizeJob(raw = {}) {
       'jobStatus', 'JOBSTATUS', 'jobstatus',
       'status', 'STATUS'
     ])),
-    priority: normalizePriority(firstDefined(raw, [
+    priority: rawPriority(firstDefined(raw, [
+      'priority', 'PRIORITY', 'jobPriority', 'JOBPRIORITY'
+    ])),
+    priorityLevel: priorityLevel(firstDefined(raw, [
       'priority', 'PRIORITY', 'jobPriority', 'JOBPRIORITY'
     ])),
     salary: buildSalary(raw),
@@ -673,14 +711,15 @@ async function getJobs() {
   if (provider === 'mock') return loadMockData('jobs.json');
   if (provider !== 'jobdiva') throw new Error(`getJobs is not implemented for provider: ${provider}`);
 
-  if (!config.recruiterId) {
-    throw new Error('JOBDIVA_RECRUITER_ID is required. Jobs are intentionally filtered to one JobDiva recruiter.');
-  }
+  const recruiterId = currentJobDivaUserId();
+
+  const cached = jobsListCache.get(recruiterId);
+  if (cached && Date.now() < cached.expiry) return cached.jobs;
 
   // JobDiva has an exact recruiter filter: JobsListByUser(recruiterId).
   // This is preferable to fetching every open job and filtering locally.
   const listData = await requestJobDivaGet(config.endpoints.jobsListByUser, {
-    recruiterId: Number(config.recruiterId),
+    recruiterId,
   });
   const listRows = getRows(listData) || [];
   const jobIds = unique((Array.isArray(listRows) ? listRows : [listRows]).map(row => extractId(row, [
@@ -700,12 +739,20 @@ async function getJobs() {
   // sources for the people attached to a job. They fill the application's
   // "Hiring Manager" and "Primary Recruiter" concepts when those names are
   // not present in JobsDetail itself.
-  const [contactsData, usersData] = await Promise.all([
-    safeGet(config.endpoints.jobsContacts, { jobIds }),
-    safeGet(config.endpoints.jobsInternalUsers, { jobIds }),
-  ]);
-  const contacts = getRows(contactsData) || [];
-  const users = getRows(usersData) || [];
+  // JobDiva caps these BI endpoints at 100 jobIds per call, so chunk the
+  // same way as JobsDetail above instead of sending the full list at once.
+  const contacts = [];
+  const users = [];
+  for (const ids of chunk(jobIds, 50)) {
+    const [contactsData, usersData] = await Promise.all([
+      safeGet(config.endpoints.jobsContacts, { jobIds: ids }),
+      safeGet(config.endpoints.jobsInternalUsers, { jobIds: ids }),
+    ]);
+    const contactRows = getRows(contactsData) || [];
+    const userRows = getRows(usersData) || [];
+    contacts.push(...(Array.isArray(contactRows) ? contactRows : [contactRows]));
+    users.push(...(Array.isArray(userRows) ? userRows : [userRows]));
+  }
   const contactsByJob = new Map();
   const usersByJob = new Map();
 
@@ -775,6 +822,7 @@ async function getJobs() {
 
   // The recruiter scope is the authoritative filter. Keep all statuses so
   // the UI's status filter can work with the complete recruiter job set.
+  jobsListCache.set(recruiterId, { jobs: normalizedJobs, expiry: Date.now() + JOBS_LIST_CACHE_MS });
   return normalizedJobs;
 }
 
@@ -785,14 +833,12 @@ async function getJobById(id) {
   }
   if (provider !== 'jobdiva') throw new Error(`getJobById is not implemented for provider: ${provider}`);
 
-  if (!config.recruiterId) {
-    throw new Error('JOBDIVA_RECRUITER_ID is required.');
-  }
+  const recruiterId = currentJobDivaUserId();
 
   // Enforce the same recruiter scope on direct job-detail URLs.
   // Otherwise a user could bypass the list filter by typing another Job ID.
   const scopedJobs = await requestJobDivaGet(config.endpoints.jobsListByUser, {
-    recruiterId: Number(config.recruiterId),
+    recruiterId,
   });
   const scopedRows = getRows(scopedJobs) || [];
   const scopedIds = new Set((Array.isArray(scopedRows) ? scopedRows : [scopedRows])
@@ -853,21 +899,28 @@ function formatJobDivaDate(date) {
   ].join(' ');
 }
 
+// A years-old job can span 100+ of these 14-day windows, and each window
+// fires up to 3 JobDiva calls. Cap how far back we go so activity for old
+// jobs still loads quickly and doesn't trip JobDiva's sandbox rate limit;
+// build from the most recent window backwards so recent history is always
+// kept, then return chronologically.
+const MAX_ACTIVITY_WINDOWS = 30;
+
 function activityWindows(startDate, endDate) {
   const windows = [];
   const maxMs = (14 * 24 * 60 * 60 * 1000) - 1000;
-  let cursor = new Date(startDate.getTime());
+  let cursor = new Date(endDate.getTime());
 
-  while (cursor < endDate) {
-    const windowEnd = new Date(Math.min(cursor.getTime() + maxMs, endDate.getTime()));
+  while (cursor > startDate && windows.length < MAX_ACTIVITY_WINDOWS) {
+    const windowStart = new Date(Math.max(cursor.getTime() - maxMs, startDate.getTime()));
     windows.push({
-      fromDate: formatJobDivaDate(cursor),
-      toDate: formatJobDivaDate(windowEnd),
+      fromDate: formatJobDivaDate(windowStart),
+      toDate: formatJobDivaDate(cursor),
     });
-    cursor = new Date(windowEnd.getTime() + 1000);
+    cursor = new Date(windowStart.getTime() - 1000);
   }
 
-  return windows;
+  return windows.reverse();
 }
 
 function activityRows(data) {
@@ -1071,9 +1124,10 @@ async function getJobActivity(id) {
   }
 
   const windows = activityWindows(postingDate, now);
-  // JobDiva limits each BI feed to 14 days. Fetch a few windows concurrently
-  // so long-lived jobs load quickly without creating a huge request burst.
-  const windowResults = await mapWithConcurrency(windows, 4, async (window) => {
+  // JobDiva limits each BI feed to 14 days, and each window fires up to 3
+  // requests. A long-lived job can span dozens of windows, so keep
+  // concurrency low enough to stay under JobDiva's sandbox rate limit.
+  const windowResults = await mapWithConcurrency(windows, 2, async (window) => {
     const [jobUpdatesData, statusData, userData] = await Promise.all([
       getPagedJobUpdates(window.fromDate, window.toDate),
       requestJobDivaGet(config.endpoints.jobsStatusHistory, {
@@ -1227,9 +1281,9 @@ async function getJobActivity(id) {
         }));
       }
 
-      // Priority  (JobDiva stores "1"=High, "2"=Medium, "3/4"=Low numerically)
-      const prevPriority = normalizePriority(firstDefined(p, ['PRIORITY', 'priority'], ''));
-      const currPriority = normalizePriority(firstDefined(r, ['PRIORITY', 'priority'], ''));
+      // Priority — shown as JobDiva's own raw value (e.g. "1"), not a word.
+      const prevPriority = rawPriority(firstDefined(p, ['PRIORITY', 'priority'], ''));
+      const currPriority = rawPriority(firstDefined(r, ['PRIORITY', 'priority'], ''));
       if (currPriority && prevPriority !== currPriority) {
         events.push(normalizeActivityEvent({
           type: 'job_priority_changed', label: 'Priority Changed',
@@ -1772,6 +1826,250 @@ function normalizeSubmittal(raw = {}) {
   };
 }
 
+// ----------------------------------------------------------
+// SUBMITTALS — Dashboard "Submittals" detail view
+// Aggregates JobsSubmittalsDetail across every job assigned to the
+// logged-in recruiter (the same recruiter scope as getJobs()).
+// ----------------------------------------------------------
+function submittalEventDate(raw) {
+  // Most relevant date for the record: latest hard milestone first,
+  // falling back to when the submittal itself was made.
+  return firstDefined(raw, [
+    'STARTDATE', 'startDate',
+    'PLACEMENTDATE', 'placementDate',
+    'DATEINTERVIEW', 'interviewDate',
+    'INTERVIEWSCHEDULEDATE', 'interviewScheduleDate',
+    'REJECTIONDATE', 'rejectionDate',
+    'SUBMITTALDATE', 'submittalDate',
+    'DATECREATED',
+  ], '');
+}
+
+function submittalStage(raw) {
+  const hireFlag = String(firstDefined(raw, ['HIREFLAG', 'hireFlag'], '0'));
+  const placementDate = firstDefined(raw, ['PLACEMENTDATE', 'placementDate'], '');
+  const startDate = firstDefined(raw, ['STARTDATE', 'startDate'], '');
+  const rejectionDate = firstDefined(raw, ['REJECTIONDATE', 'rejectionDate'], '');
+  const internalRejectDate = firstDefined(raw, ['INTERNALREJECTDATE'], '');
+  const externalRejectDate = firstDefined(raw, ['EXTERNALREJECTDATE'], '');
+  const interviewDate = firstDefined(raw, ['DATEINTERVIEW', 'interviewDate'], '');
+  const interviewScheduleDate = firstDefined(raw, ['INTERVIEWSCHEDULEDATE', 'interviewScheduleDate'], '');
+
+  if (hireFlag === '1' || startDate || placementDate) return 'Placed';
+  if (rejectionDate || internalRejectDate || externalRejectDate) return 'Rejected';
+  if (interviewDate || interviewScheduleDate) return 'Interview';
+  return 'Screening';
+}
+
+function normalizeSubmittalRow(raw, jobById, candidateNameById) {
+  const jobId = String(firstDefined(raw, ['JOBID', 'jobId'], ''));
+  const candidateId = String(firstDefined(raw, ['CANDIDATEID', 'candidateId'], ''));
+  const job = jobById.get(jobId);
+  const isInternal = String(firstDefined(raw, ['INTERNALSUBMITTALFLAG'], '0')) === '1';
+  const isExternal = String(firstDefined(raw, ['EXTERNALSUBMITTALFLAG'], '0')) === '1';
+  const dateRaw = submittalEventDate(raw);
+  const submittalDateRaw = firstDefined(raw, ['SUBMITTALDATE', 'submittalDate'], '');
+  const interviewDateRaw = firstDefined(raw, ['DATEINTERVIEW', 'interviewDate', 'INTERVIEWSCHEDULEDATE', 'interviewScheduleDate'], '');
+  const startDateRaw = firstDefined(raw, ['STARTDATE', 'startDate'], '');
+  const endDateRaw = firstDefined(raw, ['ENDDATE', 'endDate'], '');
+  const terminationDateRaw = firstDefined(raw, ['TERMINATIONDATE', 'terminationDate'], '');
+
+  return {
+    id: String(firstDefined(raw, ['ID', 'id'], `${jobId}-${candidateId}`)),
+    candidateId,
+    candidateName: candidateNameById.get(candidateId) || `Candidate ${candidateId}`,
+    jobId,
+    jobTitle: job ? job.title : `Job ${jobId}`,
+    client: job ? job.client : '',
+    location: job ? job.location : '',
+    // PRIMARYRECRUITERID on the submittal itself — the authoritative "who
+    // owns this job assignment" field (JobsInternalUsersDetail keys people
+    // by CONTACTID, not USERID, so it can't be used for this comparison).
+    recruiterId: String(firstDefined(raw, ['PRIMARYRECRUITERID', 'recruiterId'], '')),
+    type: isExternal && !isInternal ? 'External' : 'Internal',
+    stage: submittalStage(raw),
+    date: formatDate(dateRaw),
+    dateRaw,
+    submittalDate: formatDate(submittalDateRaw),
+    submittalDateRaw,
+    interviewDate: formatDate(interviewDateRaw),
+    interviewDateRaw,
+    startDate: formatDate(startDateRaw),
+    startDateRaw,
+    endDate: formatDate(endDateRaw),
+    endDateRaw,
+    terminationDateRaw,
+    startStatus: firstDefined(raw, ['START_STATUS', 'startStatus'], ''),
+  };
+}
+
+async function getSubmittals() {
+  if (provider === 'mock') return [];
+  if (provider !== 'jobdiva') throw new Error(`getSubmittals is not implemented for provider: ${provider}`);
+
+  const recruiterId = currentJobDivaUserId();
+
+  const cached = submittalsCache.get(recruiterId);
+  if (cached && Date.now() < cached.expiry) return cached.submittals;
+
+  // Same recruiter scope as getJobs() (and often served from its own cache).
+  const jobs = await getJobs();
+  if (!jobs.length) return [];
+
+  const jobById = new Map(jobs.map(job => [String(job.id), job]));
+  const jobIds = jobs.map(job => String(job.id));
+
+  const submittalRows = [];
+  for (const ids of chunk(jobIds, 50)) {
+    const data = await requestJobDivaGet(config.endpoints.jobSubmittals, { jobIds: ids });
+    const rows = getRows(data) || [];
+    submittalRows.push(...(Array.isArray(rows) ? rows : [rows]));
+  }
+
+  if (!submittalRows.length) {
+    submittalsCache.set(recruiterId, { submittals: [], expiry: Date.now() + SUBMITTALS_CACHE_MS });
+    return [];
+  }
+
+  const candidateIds = unique(submittalRows
+    .map(row => extractId(row, ['CANDIDATEID', 'candidateId']))
+    .filter(v => v !== undefined && v !== null && v !== '')
+    .map(String));
+
+  // A recruiter with 100+ jobs can produce thousands of submittals across
+  // hundreds of unique candidates. CandidatesDetail accepts large batches
+  // (150 verified), so fetch in fewer, larger chunks with mild concurrency
+  // instead of hundreds of tiny sequential round trips.
+  const candidateNameById = new Map();
+  const candidateChunks = chunk(candidateIds, 150);
+  await mapWithConcurrency(candidateChunks, 3, async (ids) => {
+    const data = await safeGet(config.endpoints.candidatesDetail, { candidateIds: ids });
+    const rows = getRows(data) || [];
+    for (const row of Array.isArray(rows) ? rows : [rows]) {
+      const id = extractId(row, ['ID', 'id', 'candidateId', 'CANDIDATEID']);
+      if (id == null) continue;
+      const first = firstDefined(row, ['FIRSTNAME', 'firstName'], '');
+      const last = firstDefined(row, ['LASTNAME', 'lastName'], '');
+      candidateNameById.set(String(id), [first, last].filter(Boolean).join(' '));
+    }
+  });
+
+  const submittals = submittalRows
+    .map(row => normalizeSubmittalRow(row, jobById, candidateNameById))
+    .sort((a, b) => new Date(b.dateRaw || 0) - new Date(a.dateRaw || 0));
+
+  submittalsCache.set(recruiterId, { submittals, expiry: Date.now() + SUBMITTALS_CACHE_MS });
+  return submittals;
+}
+
+// ----------------------------------------------------------
+// DASHBOARD DETAIL VIEWS — Interviews / Starts / First Presentation /
+// My Primary Jobs. All four are derived views over getSubmittals(), so
+// they reuse its cache and never make extra JobDiva calls of their own —
+// this keeps them fast even for recruiters with hundreds of submittals.
+// ----------------------------------------------------------
+
+async function getInterviews() {
+  const submittals = await getSubmittals();
+  return submittals
+    .filter(s => s.interviewDateRaw)
+    .map(s => ({
+      id: s.id,
+      candidateId: s.candidateId,
+      candidateName: s.candidateName,
+      jobId: s.jobId,
+      jobTitle: s.jobTitle,
+      client: s.client,
+      notes: 'Recorded via ATS',
+      date: s.interviewDate,
+      dateRaw: s.interviewDateRaw,
+    }))
+    .sort((a, b) => new Date(b.dateRaw || 0) - new Date(a.dateRaw || 0));
+}
+
+async function getStarts() {
+  const submittals = await getSubmittals();
+  const now = Date.now();
+  const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+
+  return submittals
+    .filter(s => s.startDateRaw)
+    .map(s => {
+      const end = s.endDateRaw ? new Date(s.endDateRaw).getTime() : null;
+      const terminated = !!s.terminationDateRaw;
+      const approved = !s.startStatus || /approved/i.test(s.startStatus);
+      const endingSoon = !terminated && end != null && end >= now && (end - now) <= thirtyDaysMs;
+
+      let status = 'Active';
+      if (terminated || (end != null && end < now)) status = 'Ended';
+      else if (!approved) status = 'Unapproved';
+
+      return {
+        id: s.id,
+        candidateId: s.candidateId,
+        candidateName: s.candidateName,
+        jobId: s.jobId,
+        jobTitle: s.jobTitle,
+        client: s.client,
+        location: s.location,
+        status,
+        endingSoon,
+        approved,
+        date: s.startDate,
+        dateRaw: s.startDateRaw,
+      };
+    })
+    .sort((a, b) => new Date(b.dateRaw || 0) - new Date(a.dateRaw || 0));
+}
+
+async function getFirstPresentations() {
+  const submittals = await getSubmittals();
+
+  // "First Presentation" = the earliest submittal per candidate+job pair —
+  // the first time that candidate was presented to this client for this role.
+  const earliestByKey = new Map();
+  for (const s of submittals) {
+    const key = `${s.jobId}:${s.candidateId}`;
+    const existing = earliestByKey.get(key);
+    const candidateDate = new Date(s.submittalDateRaw || s.dateRaw || 0);
+    const existingDate = existing ? new Date(existing.submittalDateRaw || existing.dateRaw || 0) : null;
+    if (!existing || candidateDate < existingDate) earliestByKey.set(key, s);
+  }
+
+  return [...earliestByKey.values()]
+    .map(s => ({
+      id: s.id,
+      candidateId: s.candidateId,
+      candidateName: s.candidateName,
+      jobId: s.jobId,
+      jobTitle: s.jobTitle,
+      client: s.client,
+      notes: 'Recorded via ATS',
+      date: s.submittalDate || s.date,
+      dateRaw: s.submittalDateRaw || s.dateRaw,
+    }))
+    .sort((a, b) => new Date(b.dateRaw || 0) - new Date(a.dateRaw || 0));
+}
+
+async function getMyPrimaryJobRecords() {
+  const myId = String(currentJobDivaUserId());
+  const submittals = await getSubmittals();
+  return submittals
+    .filter(s => s.recruiterId === myId)
+    .map(s => ({
+      id: s.id,
+      candidateId: s.candidateId,
+      candidateName: s.candidateName,
+      jobId: s.jobId,
+      jobTitle: s.jobTitle,
+      client: s.client,
+      notes: 'Recorded via ATS',
+      date: s.date,
+      dateRaw: s.dateRaw,
+    }))
+    .sort((a, b) => new Date(b.dateRaw || 0) - new Date(a.dateRaw || 0));
+}
+
 async function getCandidateApplications(candidateId) {
   const data = await requestJobDivaGet('/apiv2/jobdiva/CandidateApplicationsList', { candidateId: Number(candidateId) });
   return getRows(data) || [];
@@ -1921,10 +2219,7 @@ async function writeNote({
     // Must match a registered JobDiva Candidate Note Action.
     action: cleanActionType || undefined,
 
-    recruiterid:
-      config.recruiterId
-        ? Number(config.recruiterId)
-        : undefined,
+    recruiterid: currentJobDivaUserId(),
 
     link2AnOpenJob:
       jobId
@@ -1983,6 +2278,11 @@ module.exports = {
   getJobById,
   getJobActivity,
   getCandidatesForJob,
+  getSubmittals,
+  getInterviews,
+  getStarts,
+  getFirstPresentations,
+  getMyPrimaryJobRecords,
   getCandidateById,
   searchCandidates,
   quickSearchCandidates,

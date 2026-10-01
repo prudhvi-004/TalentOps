@@ -47,6 +47,7 @@ const NAV_ITEMS = [
   { id: 'tasks',     label: 'Tasks',            icon: '✅', path: '/tasks' },
   { id: 'team',      label: 'Team Assignment',  icon: '👫', path: '/team' },
   { id: 'clients',   label: 'Client Assignment',icon: '🏢', path: '/clients' },
+  { id: 'admin', label: 'Admin', icon: '⚙️', path: '/admin', roles: ['ADMIN'] },
 ];
 
 /* -----------------------------------------------------------
@@ -125,6 +126,38 @@ async function renderPage() {
     } else if (path === '/candidates') {
       await loadScript('/js/pages/candidate.js');
       CandidatesPage.render(content);
+
+    } else if (path === '/submittals') {
+      await loadScript('/js/pages/submittals.js');
+      SubmittalsPage.render(content);
+
+    } else if (path === '/interviews') {
+      await loadScript('/js/components/record-detail-shared.js');
+      await loadScript('/js/pages/interviews.js');
+      InterviewsPage.render(content);
+
+    } else if (path === '/starts') {
+      await loadScript('/js/components/record-detail-shared.js');
+      await loadScript('/js/pages/starts.js');
+      StartsPage.render(content);
+
+    } else if (path === '/first-presentations') {
+      await loadScript('/js/components/record-detail-shared.js');
+      await loadScript('/js/pages/first-presentations.js');
+      FirstPresentationsPage.render(content);
+
+    } else if (path === '/my-primary-jobs') {
+      await loadScript('/js/components/record-detail-shared.js');
+      await loadScript('/js/pages/my-primary-jobs.js');
+      MyPrimaryJobsPage.render(content);
+
+    } else if (path === '/admin') {
+      if (!AuthClient.isAdmin()) {
+        content.innerHTML = '<div class="empty"><h3>Not authorized</h3><p>You do not have permission to view this page.</p></div>';
+        return;
+      }
+      await loadScript('/js/pages/admin.js');
+      await AdminPage.render(content);
 
     } else if (path === '/tasks') {
       // Tasks — dummy data for demo
@@ -206,7 +239,7 @@ function renderNav() {
   const nav = document.getElementById('navList');
   if (!nav) return;
 
-  nav.innerHTML = NAV_ITEMS.map(item => {
+  nav.innerHTML = NAV_ITEMS.filter(item => !item.roles || item.roles.includes(AuthClient.user?.role)).map(item => {
     const isActive = AppState.currentPath === item.path ||
       (item.path !== '/' && AppState.currentPath.startsWith(item.path));
     return `
@@ -496,7 +529,7 @@ document.addEventListener('keydown', e => {
    INITIALISE THE APP
    Runs once when the page first loads.
 ----------------------------------------------------------- */
-function initApp() {
+async function initApp() {
   // Set theme
   initTheme();
 
@@ -538,11 +571,14 @@ function initApp() {
       document.getElementById('notifPanel').classList.remove('open');
     });
 
+  const user = await AuthClient.boot();
+  if (!user) return;
+
   // Render navigation sidebar
   renderNav();
 
   // Render the current page
-  renderPage();
+  await renderPage();
 }
 
 // Start the app when DOM is ready
