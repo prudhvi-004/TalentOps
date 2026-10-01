@@ -52,3 +52,11 @@ build/
 # ---------------------------
 test_scripts/*.json
 jobdiva-*.json
+
+# ---------------------------
+# Temp / Scratch files
+# ---------------------------
+.claude/
+s*.txt
+sub_*.json
+UsersHARSHA*.json
