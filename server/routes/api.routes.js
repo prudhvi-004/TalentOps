@@ -281,6 +281,67 @@ router.get(
 
 
 // ----------------------------------------------------------
+// GET /api/submittals
+// Returns every submittal across all jobs assigned to the logged-in
+// recruiter — powers the dashboard's "Submittals" detail view.
+// Frontend: public/js/pages/submittals.js
+// ----------------------------------------------------------
+router.get('/submittals', async (req, res) => {
+  try {
+    const submittals = await atsService.getSubmittals();
+    res.json({ success: true, data: submittals });
+  } catch (error) {
+    console.error('Error fetching submittals:', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+
+// ----------------------------------------------------------
+// GET /api/interviews, /api/starts, /api/first-presentations,
+// /api/my-primary-jobs
+// Dashboard tile detail views. Each is derived from getSubmittals()
+// server-side (no extra JobDiva calls), so these stay fast even for
+// recruiters with hundreds of submittals.
+// ----------------------------------------------------------
+router.get('/interviews', async (req, res) => {
+  try {
+    res.json({ success: true, data: await atsService.getInterviews() });
+  } catch (error) {
+    console.error('Error fetching interviews:', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.get('/starts', async (req, res) => {
+  try {
+    res.json({ success: true, data: await atsService.getStarts() });
+  } catch (error) {
+    console.error('Error fetching starts:', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.get('/first-presentations', async (req, res) => {
+  try {
+    res.json({ success: true, data: await atsService.getFirstPresentations() });
+  } catch (error) {
+    console.error('Error fetching first presentations:', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.get('/my-primary-jobs', async (req, res) => {
+  try {
+    res.json({ success: true, data: await atsService.getMyPrimaryJobRecords() });
+  } catch (error) {
+    console.error('Error fetching primary job records:', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+
+// ----------------------------------------------------------
 // GET /api/candidates/:id
 // Returns full profile of a single candidate by ATS ID.
 //

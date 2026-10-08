@@ -127,6 +127,30 @@ async function renderPage() {
       await loadScript('/js/pages/candidate.js');
       CandidatesPage.render(content);
 
+    } else if (path === '/submittals') {
+      await loadScript('/js/pages/submittals.js');
+      SubmittalsPage.render(content);
+
+    } else if (path === '/interviews') {
+      await loadScript('/js/components/record-detail-shared.js');
+      await loadScript('/js/pages/interviews.js');
+      InterviewsPage.render(content);
+
+    } else if (path === '/starts') {
+      await loadScript('/js/components/record-detail-shared.js');
+      await loadScript('/js/pages/starts.js');
+      StartsPage.render(content);
+
+    } else if (path === '/first-presentations') {
+      await loadScript('/js/components/record-detail-shared.js');
+      await loadScript('/js/pages/first-presentations.js');
+      FirstPresentationsPage.render(content);
+
+    } else if (path === '/my-primary-jobs') {
+      await loadScript('/js/components/record-detail-shared.js');
+      await loadScript('/js/pages/my-primary-jobs.js');
+      MyPrimaryJobsPage.render(content);
+
     } else if (path === '/admin') {
       if (!AuthClient.isAdmin()) {
         content.innerHTML = '<div class="empty"><h3>Not authorized</h3><p>You do not have permission to view this page.</p></div>';

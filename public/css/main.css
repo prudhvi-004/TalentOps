@@ -363,6 +363,19 @@ h1,h2,h3,h4,h5 { line-height: 1.3; }
 }
 .breadcrumb span:hover { text-decoration: underline; }
 
+/* Job detail page title — links out to JobDiva. Stays plain text-colored
+   until hovered, then turns the accent blue with an underline so it's
+   clear it's a link, without making the whole heading look like a link
+   at rest. */
+.job-title-link {
+  color: inherit;
+  text-decoration: none;
+}
+.job-title-link:hover {
+  color: var(--primary);
+  text-decoration: underline;
+}
+
 
 /* ─────────────────────────────────────────────────────────────
    7. CARDS & TILES
