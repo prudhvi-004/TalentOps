@@ -14,11 +14,15 @@ router.get('/auth/login', (req, res) => {
 });
 
 router.post('/auth/login', async (req, res) => {
-  const email = String(req.body?.email || '').trim().toLowerCase();
+  const loginType = req.body?.loginType === 'recruiterId' ? 'recruiterId' : 'email';
+  const identifier = String(req.body?.identifier ?? req.body?.email ?? '').trim();
   const password = String(req.body?.password || '');
-  if (!email || !password) return res.status(400).json({ success: false, error: 'Email and password are required.' });
+  if (!identifier || !password) return res.status(400).json({ success: false, error: loginType === 'email' ? 'Email and password are required.' : 'Recruiter ID and password are required.' });
+  if (loginType === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier)) {
+    return res.status(400).json({ success: false, error: 'Enter a valid email address.' });
+  }
   try {
-    const user = await store.findForLogin(email);
+    const user = await store.findForLogin(identifier, loginType);
     const valid = user && user.active && user.jobdivaActive && await store.verifyPassword(password, user.passwordHash);
     if (!valid) return res.status(401).json({ success: false, error: 'Email or password is incorrect, or this account is inactive.' });
     req.session.regenerate(error => {
