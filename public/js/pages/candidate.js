@@ -25,7 +25,78 @@
 
 const CandidatesPage = (() => {
 
+  const GRID_TO_LIST_THRESHOLD = 8;
+  const SCROLL_HYSTERESIS = 24;
+  let viewMode = 'grid';
+  let scrollThresholdPx = null;
+  let currentFiltered = [];
+  let scrollContainer = null;
+
+  function handleScroll() {
+    if (scrollThresholdPx == null || !scrollContainer) return;
+    const top = scrollContainer.scrollTop;
+    if (viewMode === 'grid' && top > scrollThresholdPx + SCROLL_HYSTERESIS) {
+      viewMode = 'list'; renderView();
+    } else if (viewMode === 'list' && top < scrollThresholdPx - SCROLL_HYSTERESIS) {
+      viewMode = 'grid'; renderView();
+    }
+  }
+
+  function renderView() {
+    if (viewMode === 'list') return renderList(currentFiltered);
+    renderGrid(currentFiltered);
+    const card = document.getElementById('candGrid')
+      ?.querySelectorAll('[data-cand-tile]')[GRID_TO_LIST_THRESHOLD - 1];
+    if (currentFiltered.length > GRID_TO_LIST_THRESHOLD && card) {
+      scrollThresholdPx = scrollContainer.scrollTop +
+        (card.getBoundingClientRect().bottom - scrollContainer.getBoundingClientRect().top);
+    } else {
+      scrollThresholdPx = null;
+    }
+  }
+
+  function wireClicks(grid) {
+    grid.querySelectorAll('[data-cand-tile]').forEach(el => {
+      el.onclick = () => {
+        sessionStorage.setItem('openCandId', el.dataset.candId);
+        sessionStorage.setItem('openCandSource', el.dataset.source);
+        sessionStorage.setItem('openCandAICat', el.dataset.aiCategory || 'Applicant');
+        window.navigate(`/jobs/${el.dataset.jobId}`);
+      };
+    });
+  }
+
+  function renderList(candidates) {
+    const grid = document.getElementById('candGrid');
+    if (!grid) return;
+    grid.className = '';
+    grid.innerHTML = `
+      <div class="detail-card">
+        <h3>All Candidates</h3>
+        <table class="data-table">
+          <thead><tr><th>CANDIDATE</th><th>JOB</th><th>CLIENT</th><th>EMAIL</th><th>PHONE</th><th>LOCATION</th><th>STAGE</th><th>SUBMITTED</th></tr></thead>
+          <tbody>
+            ${candidates.map(c => `
+              <tr data-cand-tile="${c.id}" data-cand-id="${c.id}" data-job-id="${c._job?.id || ''}"
+                  data-source="${c._source}" style="cursor:pointer">
+                <td style="font-weight:600">${c.name}</td>
+                <td>${c._job?.title || '—'}</td>
+                <td>${c._job?.client || ''}</td>
+                <td>${c.email || ''}</td>
+                <td>${c.phone || ''}</td>
+                <td>${c.candidateLocation || ''}</td>
+                <td>${c.stage || ''}</td>
+                <td>${c.submittedOn || ''}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+    wireClicks(grid);
+  }
+
   async function render(container) {
+    viewMode = 'grid';
+    scrollThresholdPx = null;
     container.innerHTML = `
       <div class="page-header fade-in">
         <div>
@@ -51,55 +122,37 @@ const CandidatesPage = (() => {
     const searchInput = document.getElementById('candSearch');
     if (searchInput) searchInput.value = initialSearch;
 
-    // Fetch all jobs to get candidates from each
-    const jobsResult = await ApiService.getJobs();
-    if (!jobsResult.success) {
+    // Only candidates submitted by this recruiter (server scopes submittals
+    // to the logged-in recruiter), one row per candidate+job, newest first.
+    const subResult = await ApiService.getSubmittals();
+    if (!subResult.success) {
       document.getElementById('candGrid').innerHTML =
         '<div class="empty" style="grid-column:1/-1"><h3>Could not load data</h3></div>';
       return;
     }
-
-    // Fetch all candidates across all jobs in parallel
-    const allJobs = jobsResult.data;
-    const candRequests = allJobs.map(j => ApiService.getCandidatesForJob(j.id));
-    const aiRequests   = allJobs.map(j => ApiService.getAIEngagedForJob(j.id));
-
-    const [candResults, aiResults] = await Promise.all([
-      Promise.all(candRequests),
-      Promise.all(aiRequests),
-    ]);
-
-    // Flatten all candidates into one array with job context
-    let allCandidates = [];
-    candResults.forEach((result, i) => {
-      if (result.success) {
-        result.data.forEach(c => {
-          allCandidates.push({
-            ...c,
-            _job: allJobs[i],
-            _source: 'pipeline',
-          });
+    const seen = new Set();
+    const allCandidates = [];
+    const jobsById = new Map();
+    [...subResult.data]
+      .sort((x, y) => new Date(y.dateRaw || 0) - new Date(x.dateRaw || 0))
+      .forEach(s => {
+        const key = `${s.candidateId}|${s.jobId}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        const job = { id: s.jobId, title: s.jobTitle, client: s.client };
+        jobsById.set(String(s.jobId), job);
+        allCandidates.push({
+          id: s.candidateId, name: s.candidateName, _job: job, _source: 'pipeline',
+          stage: s.stage, submittedOn: s.submittalDate || s.date, type: s.type,
+          email: s.email, phone: s.phone, candidateLocation: s.candidateLocation,
+          currentTitle: s.currentTitle, currentCompany: s.currentCompany,
+          interviewDate: s.interviewDate, startDate: s.startDate, jobLocation: s.location,
         });
-      }
-    });
+      });
+    const allJobs = [...jobsById.values()];
 
-    // Include AI engaged candidates
-    aiResults.forEach((result, i) => {
-      if (result.success) {
-        [...(result.data.applicants || []),
-         ...(result.data.candidates || [])].forEach(c => {
-          allCandidates.push({
-            ...c,
-            _job: allJobs[i],
-            _source: 'ai',
-          });
-        });
-      }
-    });
-
-    // Update subtitle
     document.getElementById('candPageSub').textContent =
-      `${allCandidates.length} candidates across ${allJobs.length} jobs`;
+      `${allCandidates.length} submitted candidates across ${allJobs.length} jobs`;
 
     // Populate job filter dropdown
     const jobFilter = document.getElementById('candJobFilter');
@@ -109,6 +162,9 @@ const CandidatesPage = (() => {
       opt.textContent = j.title;
       jobFilter.appendChild(opt);
     });
+
+    scrollContainer = container;
+    container.onscroll = handleScroll;
 
     // Render tiles
     function applyFilters() {
@@ -124,7 +180,10 @@ const CandidatesPage = (() => {
         return (!search || haystack.some(v => v.includes(search))) &&
                (!jobFilter || String(c._job?.id) === String(jobFilter));
       });
-      renderGrid(filtered);
+      currentFiltered = filtered;
+      viewMode = 'grid';
+      scrollThresholdPx = null;
+      renderView();
     }
 
     document.getElementById('candSearch').oninput   = applyFilters;
@@ -136,6 +195,7 @@ const CandidatesPage = (() => {
   function renderGrid(candidates) {
     const grid = document.getElementById('candGrid');
     if (!grid) return;
+    grid.className = 'tile-grid';
 
     if (candidates.length === 0) {
       grid.innerHTML = `
@@ -145,25 +205,9 @@ const CandidatesPage = (() => {
       return;
     }
 
+    grid.className = 'tile-grid';
     grid.innerHTML = candidates.map(c => candidateTile(c)).join('');
-
-    // Click → navigate to job with this candidate in split view
-    grid.querySelectorAll('[data-cand-tile]').forEach(el => {
-      el.onclick = () => {
-        const jobId  = el.dataset.jobId;
-        const candId = el.dataset.candId;
-        const source = el.dataset.source;
-        const aiCat  = el.dataset.aiCategory || 'Applicant';
-
-        // Store which candidate to open in split view
-        // job-detail.js reads this on load
-        sessionStorage.setItem('openCandId',     candId);
-        sessionStorage.setItem('openCandSource', source);
-        sessionStorage.setItem('openCandAICat',  aiCat);
-
-        window.navigate(`/jobs/${jobId}`);
-      };
-    });
+    wireClicks(grid);
   }
 
   function candidateTile(c) {
@@ -191,22 +235,23 @@ const CandidatesPage = (() => {
           ${c._job?.title || '—'} · ${c._job?.client || '—'}
         </div>
 
-        <div style="margin-top:6px">
-          <span style="font-size:12px;color:var(--text-muted)">
-            📍 ${c.city || c.location || '—'}, ${c.state || ''}
-            ${c.experience ? `· ${c.experience}y exp` : ''}
-          </span>
+        ${c.currentTitle || c.currentCompany
+          ? `<div style="margin-top:6px;font-size:12px">💼 ${[c.currentTitle, c.currentCompany].filter(Boolean).join(' @ ')}</div>` : ''}
+        <div style="margin-top:6px;font-size:12px;color:var(--text-muted)">
+          📍 ${c.candidateLocation || c.jobLocation || '—'}
         </div>
 
-        <div style="margin-top:8px">
-          ${skills.map(s => `<span class="tile-tag">${s}</span>`).join('')}
-          ${(c.skills || []).length > 4
-            ? `<span class="tile-tag">+${(c.skills || []).length - 4}</span>`
-            : ''}
+        <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+          <span class="chip chip-open">${(c.stage || '').toUpperCase()}</span>
+          <span class="chip ${c.type === 'External' ? 'chip-filled' : 'chip-medium'}">${(c.type || '').toUpperCase()}</span>
         </div>
 
-        <div class="tile-meta">
-          <span>📧 ${c.email || '—'}</span>
+        <div class="tile-meta" style="flex-wrap:wrap;gap:4px 12px">
+          <span>${c.email || ''}</span>
+          <span>${c.phone || ''}</span>
+          <span>📅 Submitted ${c.submittedOn || '—'}</span>
+          ${c.interviewDate ? `<span>🗣 Interview ${c.interviewDate}</span>` : ''}
+          ${c.startDate ? `<span>🚀 Start ${c.startDate}</span>` : ''}
         </div>
 
       </div>`;

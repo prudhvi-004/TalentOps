@@ -637,6 +637,9 @@ function normalizeJob(raw = {}) {
       firstDefined(raw, ['contactFirstName', 'CONTACTFIRSTNAME'], ''),
       firstDefined(raw, ['contactLastName', 'CONTACTLASTNAME'], '')
     ].filter(Boolean).join(' '),
+    optionalRef: String(firstDefined(raw, ['refNo', 'REFNO', 'REFNUMBER', 'refNumber', 'optionalref', 'OPTIONALREF', 'optionalRef', 'OPTIONALREFNO', 'CUSTOMERREF', 'customerRef', 'CLIENTREF', 'JOBREFERENCE', 'REFERENCENO'], '') ||
+      // last resort: any other *ref* field on the raw job (excluding JobDiva's own ref / references text)
+      (Object.keys(raw || {}).filter(k => /ref/i.test(k) && !/^(jobdivaref|jobdivano|references)$/i.test(k) && raw[k]).map(k => raw[k])[0] || '')),
     description: String(description || ''),
     postingDescription: String(postingDescription || ''),
     requirements,
@@ -1972,6 +1975,7 @@ function normalizeSubmittalRow(raw, jobById, candidateNameById) {
     id: String(firstDefined(raw, ['ID', 'id'], `${jobId}-${candidateId}`)),
     candidateId,
     candidateName: candidateNameById.get(candidateId) || `Candidate ${candidateId}`,
+    ...((candidateNameById.info && candidateNameById.info.get(candidateId)) || {}),
     jobId,
     jobTitle: job ? job.title : `Job ${jobId}`,
     client: job ? job.client : '',
@@ -2045,6 +2049,16 @@ async function loadSubmittals(recruiterId) {
       const first = firstDefined(row, ['FIRSTNAME', 'firstName'], '');
       const last = firstDefined(row, ['LASTNAME', 'lastName'], '');
       candidateNameById.set(String(id), [first, last].filter(Boolean).join(' '));
+      const city = firstDefined(row, ['CITY', 'city'], '');
+      const state = firstDefined(row, ['STATE', 'state'], '');
+      candidateNameById.info = candidateNameById.info || new Map();
+      candidateNameById.info.set(String(id), {
+        email: firstDefined(row, ['EMAIL', 'email', 'EMAIL1'], ''),
+        phone: firstDefined(row, ['CELLPHONE', 'cellPhone', 'PHONE', 'phone', 'HOMEPHONE', 'WORKPHONE'], ''),
+        candidateLocation: [city, state].filter(Boolean).join(', '),
+        currentTitle: firstDefined(row, ['TITLE', 'title', 'CURRENTTITLE', 'JOBTITLE'], ''),
+        currentCompany: firstDefined(row, ['COMPANY', 'company', 'CURRENTCOMPANY', 'EMPLOYER'], ''),
+      });
     }
   });
 

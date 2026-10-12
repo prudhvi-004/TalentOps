@@ -78,7 +78,12 @@ const JobsPage = (() => {
       return;
     }
 
-    const allJobs = result.data;
+    // Only jobs posted in the last 30 days, newest first.
+    const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    const jobDate = j => new Date(j.postingDateRaw || j.createdAtRaw || 0).getTime();
+    const allJobs = result.data
+      .filter(j => jobDate(j) >= cutoff)
+      .sort((a, b) => jobDate(b) - jobDate(a));
     const initialSearch = new URLSearchParams(window.location.search).get('search') || '';
     const searchInput = document.getElementById('fltSearch');
     if (searchInput) searchInput.value = initialSearch;

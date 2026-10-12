@@ -53,11 +53,11 @@ const SubmittalsPage = (() => {
       <div style="display:flex;gap:8px;margin-bottom:20px">
         ${[['all', 'All'], ['internal', 'Internal'], ['external', 'External']]
           .map(([val, lbl]) => `
-            <button class="filter-btn ${activeType === val ? 'active' : ''}" data-type="${val}">${lbl}</button>`).join('')}
+            <button class="filter-btn ${activeType === val ? 'active' : ''}" data-type="${val}" data-label="${lbl}">${lbl}</button>`).join('')}
       </div>
 
       <div class="detail-card">
-        <h3>Submittals Records</h3>
+        <h3 id="subRecordsTitle">Submittals Records</h3>
         <div id="submittalsTableWrap">
           <div class="loading-screen" style="height:160px">
             <div class="loading-spinner"></div>
@@ -89,6 +89,7 @@ const SubmittalsPage = (() => {
 
     document.getElementById('subSearch').oninput = applyFilters;
 
+    await loadScript('/js/components/record-detail-shared.js');
     const result = await ApiService.getSubmittals();
     if (!result.success) {
       document.getElementById('submittalsTableWrap').innerHTML = `
@@ -101,49 +102,38 @@ const SubmittalsPage = (() => {
   }
 
   function inRange(dateRaw) {
-    if (!dateRaw) return activeRange === 'custom' ? false : true;
-    const d = new Date(dateRaw);
-    if (Number.isNaN(d.getTime())) return false;
-    const now = new Date();
-    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    // Upper bound: today/week/month are trailing windows ending "now", not
-    // open-ended into the future — otherwise a future-dated record (e.g. a
-    // placement start date next month) would match every range, "Today" included.
-    const endOfToday = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000);
-
-    if (activeRange === 'today') {
-      return d >= startOfDay && d < endOfToday;
-    }
-    if (activeRange === 'week') {
-      const weekAgo = new Date(startOfDay.getTime() - 7 * 24 * 60 * 60 * 1000);
-      return d >= weekAgo && d < endOfToday;
-    }
-    if (activeRange === 'month') {
-      const monthAgo = new Date(startOfDay.getTime() - 30 * 24 * 60 * 60 * 1000);
-      return d >= monthAgo && d < endOfToday;
-    }
     if (activeRange === 'custom') {
+      // shared helper reads #dateFrom/#dateTo; this page uses sub* ids
+      if (!dateRaw) return false;
+      const d = new Date(dateRaw);
+      if (Number.isNaN(d.getTime())) return false;
       const from = document.getElementById('subDateFrom').value;
       const to = document.getElementById('subDateTo').value;
       if (from && d < new Date(from)) return false;
       if (to && d > new Date(new Date(to).getTime() + 24 * 60 * 60 * 1000 - 1)) return false;
       return true;
     }
-    return true;
+    return RecordDetailShared.inRange(dateRaw, activeRange);
   }
 
   function applyFilters() {
     const search = document.getElementById('subSearch').value.trim().toLowerCase();
 
-    const filtered = allSubmittals.filter(s => {
-      const typeOk = activeType === 'all' || s.type.toLowerCase() === activeType;
-      const rangeOk = inRange(s.dateRaw);
+    const matchesSearch = s => {
       const haystack = [s.candidateName, s.jobTitle, s.client, s.stage, s.type].map(v => String(v || '').toLowerCase());
-      const searchOk = !search || haystack.some(v => v.includes(search));
-      return typeOk && rangeOk && searchOk;
-    });
+      return !search || haystack.some(v => v.includes(search));
+    };
+    const inScope = allSubmittals.filter(s => inRange(s.dateRaw) && matchesSearch(s));
+    const count = t => inScope.filter(s => t === 'all' || s.type.toLowerCase() === t).length;
 
-    renderTable(filtered);
+    // Counts beside each type button follow the active range/search.
+    document.querySelectorAll('[data-type]').forEach(b => {
+      b.textContent = `${b.dataset.label} (${count(b.dataset.type)})`;
+    });
+    const h = document.getElementById('subRecordsTitle');
+    if (h) h.textContent = `Submittals Records (${count(activeType)})`;
+
+    renderTable(inScope.filter(s => activeType === 'all' || s.type.toLowerCase() === activeType));
   }
 
   function stageChipClass(stage) {

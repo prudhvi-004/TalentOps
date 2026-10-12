@@ -136,7 +136,7 @@ const DashboardPage = (() => {
     ]);
 
     rawData = {
-      submittals: submittals.success ? submittals.data : [],
+      submittals: submittals.success ? submittals.data.filter(r => String(r.type).toLowerCase() === 'external') : [],
       interviews: interviews.success ? interviews.data : [],
       starts: starts.success ? starts.data : [],
       fps: fps.success ? fps.data : [],
@@ -265,7 +265,8 @@ const DashboardPage = (() => {
       return;
     }
 
-    const jobs = result.data;
+    const jobs = [...result.data].sort((a, b) =>
+      new Date(b.postingDateRaw || b.createdAtRaw || 0) - new Date(a.postingDateRaw || a.createdAtRaw || 0));
 
     // Update Open Jobs tile count
     const openJobs = jobs.filter(j => j.status === 'open');
@@ -273,7 +274,7 @@ const DashboardPage = (() => {
     if (openEl) openEl.textContent = openJobs.length;
 
     // Render recent job tiles
-    grid.innerHTML = jobs.slice(0, 4).map(job => `
+    grid.innerHTML = jobs.slice(0, 6).map(job => `
       <div class="tile fade-in" data-job="${job.id}" style="cursor:pointer">
         <div class="tile-header">
           <div class="tile-title">${job.title}</div>

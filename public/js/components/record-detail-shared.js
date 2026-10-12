@@ -23,8 +23,13 @@ const RecordDetailShared = (() => {
     const endOfToday = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000);
 
     if (range === 'today') return d >= startOfDay && d < endOfToday;
-    if (range === 'week')  return d >= new Date(startOfDay.getTime() - 7 * 24 * 60 * 60 * 1000) && d < endOfToday;
-    if (range === 'month') return d >= new Date(startOfDay.getTime() - 30 * 24 * 60 * 60 * 1000) && d < endOfToday;
+    // Calendar-based: week starts Monday (Monday = day 1), month starts on the 1st.
+    if (range === 'week') {
+      const daysSinceMonday = (startOfDay.getDay() + 6) % 7;
+      const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysSinceMonday);
+      return d >= weekStart && d < endOfToday;
+    }
+    if (range === 'month') return d >= new Date(now.getFullYear(), now.getMonth(), 1) && d < endOfToday;
     if (range === 'custom') {
       const from = document.getElementById('dateFrom')?.value;
       const to = document.getElementById('dateTo')?.value;

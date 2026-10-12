@@ -128,7 +128,11 @@ const JobDetailPage = (() => {
         const body = document.createElement('div');
         body.className = 'candidate-note-body';
         body.textContent = noteBody;
+        body.classList.add('note-clamped');
         article.appendChild(body);
+        article.style.cursor = 'pointer';
+        article.title = 'Click to expand / collapse';
+        article.onclick = () => body.classList.toggle('note-clamped');
       }
 
       container.appendChild(article);
@@ -241,6 +245,7 @@ const JobDetailPage = (() => {
         <!-- ── JOB INFO CARD ── -->
         <div class="detail-card">
           <h3>ℹ️ Job Info</h3>
+          <div class="job-info-grid">
           <div class="detail-row">
             <span class="detail-label">Hiring Manager</span>
             <span>${j.hiringManager || '—'}</span>
@@ -248,6 +253,10 @@ const JobDetailPage = (() => {
           <div class="detail-row">
             <span class="detail-label">Client</span>
             <span>${j.client || '—'}${j.industry ? ` · ${j.industry}` : ''}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Optional Ref ID</span>
+            <span>${j.optionalRef || '—'}</span>
           </div>
           <div class="detail-row">
             <span class="detail-label">Primary Recruiter</span>
@@ -285,16 +294,20 @@ const JobDetailPage = (() => {
             <span class="detail-label">Posted</span>
             <span>${j.createdAt || '—'}</span>
           </div>
-          <div class="detail-row"><span class="detail-label">Submittal Due</span><span>${formatDate(j.submittalDue)}</span></div>
           <div class="detail-row"><span class="detail-label">Work Mode</span><span>${j.onsiteRemote || '—'}${j.remotePercentage ? ` · ${j.remotePercentage}% remote` : ''}</span></div>
           <div class="detail-row"><span class="detail-label">Max Submittals</span><span>${j.maxAllowedSubmittals || '—'}</span></div>
           <div class="detail-row"><span class="detail-label">Bill Rate</span><span>${j.billRateMin || '—'}${j.billRateMax ? ` – ${j.billRateMax}` : ''} ${j.billRatePer || ''}</span></div>
           <div class="detail-row"><span class="detail-label">Pay Rate</span><span>${j.payRateMin || '—'}${j.payRateMax ? ` – ${j.payRateMax}` : ''} ${j.payRatePer || ''}</span></div>
+          </div>
         </div>
 
         <!-- ── JOB DESCRIPTION CARD ── -->
         <div class="detail-card">
-          <h3>📋 Job Description</h3>
+          <h3 style="display:flex;justify-content:space-between;align-items:center">
+            <span>📋 Job Description</span>
+            <button class="btn btn-sm btn-secondary" id="jdCardToggle" type="button">⤢ Maximize</button>
+          </h3>
+          <div id="jdCardBody" class="jd-collapsed">
           <p style="font-size:13px;line-height:1.7;margin-bottom:14px">
             ${j.description || 'No description available.'}
           </p>
@@ -323,6 +336,7 @@ const JobDetailPage = (() => {
             </div>
             <p style="font-size:13px;line-height:1.6;margin:0">${j.submittalInstruction}</p>
           </div>` : ''}
+          </div>
         </div>
 
         <!-- ── CANDIDATES IN PIPELINE ── -->
@@ -387,6 +401,14 @@ const JobDetailPage = (() => {
     document.getElementById('backToJobs')
       .onclick = () => navigate('/jobs');
 
+    const jdToggle = document.getElementById('jdCardToggle');
+    if (jdToggle) {
+      jdToggle.onclick = () => {
+        const body = document.getElementById('jdCardBody');
+        const collapsed = body.classList.toggle('jd-collapsed');
+        jdToggle.textContent = collapsed ? '⤢ Maximize' : '⤡ Minimize';
+      };
+    }
     document.getElementById('viewPostingBtn')
       .onclick = () => openPostingModal(pageState.job);
 
