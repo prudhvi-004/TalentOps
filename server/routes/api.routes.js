@@ -317,7 +317,7 @@ router.get(
 // ----------------------------------------------------------
 router.get('/submittals', async (req, res) => {
   try {
-    const submittals = await atsService.getSubmittals();
+    const submittals = await atsService.getRecruiterSubmittals();
     res.json({ success: true, data: submittals });
   } catch (error) {
     console.error('Error fetching submittals:', error.message);

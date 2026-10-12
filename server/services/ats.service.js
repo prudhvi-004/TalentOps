@@ -1819,10 +1819,12 @@ async function getCandidatesForJob(jobId) {
     return loadMockData('candidates.json').filter(c => String(c.jobId) === String(jobId));
   }
   if (provider !== 'jobdiva') throw new Error(`getCandidatesForJob is not implemented for provider: ${provider}`);
-  return swr(jobCandidatesCache, JOB_CANDIDATES_CACHE_MS, String(jobId), () => loadCandidatesForJob(jobId), 15 * 60 * 1000);
+  // Cached per job AND recruiter: the list is scoped to the logged-in recruiter.
+  const recruiterId = String(currentJobDivaUserId());
+  return swr(jobCandidatesCache, JOB_CANDIDATES_CACHE_MS, `${jobId}:${recruiterId}`, () => loadCandidatesForJob(jobId, recruiterId), 15 * 60 * 1000);
 }
 
-async function loadCandidatesForJob(jobId) {
+async function loadCandidatesForJob(jobId, recruiterId) {
 
   // JobDiva's live sandbox does not populate JobsApplicantsDetail for these
   // postings. The tested source of the job -> candidate relationship is
@@ -1831,7 +1833,10 @@ async function loadCandidatesForJob(jobId) {
     jobIds: [String(jobId)],
   });
   const submittalRows = getRows(submittalsData) || [];
-  const rows = Array.isArray(submittalRows) ? submittalRows : [submittalRows];
+  // Only this recruiter's own submittals on the job; placements belong to Starts.
+  const rows = (Array.isArray(submittalRows) ? submittalRows : [submittalRows]).filter(row =>
+    String(firstDefined(row, ['PRIMARYRECRUITERID', 'recruiterId'], '')) === String(recruiterId) &&
+    submittalStage(row) !== 'Placed');
 
   const candidateIds = unique(rows
     .filter(row => String(firstDefined(row, ['JOBID', 'jobId', 'jobID', 'id', 'ID'], '')) === String(jobId))
@@ -2025,6 +2030,15 @@ async function loadSubmittals(recruiterId) {
     submittalRows.push(...(Array.isArray(rows) ? rows : [rows]));
   }
 
+  // Match the logged-in recruiter at fetch time, so every dashboard section
+  // (Submittals, Interviews, Starts, FPS) only sees this recruiter's rows.
+  const myRecruiterId = String(recruiterId);
+  for (let i = submittalRows.length - 1; i >= 0; i--) {
+    if (String(firstDefined(submittalRows[i], ['PRIMARYRECRUITERID', 'recruiterId'], '')) !== myRecruiterId) {
+      submittalRows.splice(i, 1);
+    }
+  }
+
   if (!submittalRows.length) {
     return [];
   }
@@ -2067,6 +2081,15 @@ async function loadSubmittals(recruiterId) {
     .sort((a, b) => new Date(b.dateRaw || 0) - new Date(a.dateRaw || 0));
 
   return submittals;
+}
+
+// Submittals as shown on the dashboard/Submittals page: only this
+// recruiter's own submittals (a job can be shared by two recruiters who each
+// submit), and not placements — those are counted under Starts.
+async function getRecruiterSubmittals() {
+  const myId = String(currentJobDivaUserId());
+  const all = await getSubmittals();
+  return all.filter(s => s.stage !== 'Placed' && String(s.recruiterId) === myId);
 }
 
 // ----------------------------------------------------------
@@ -2419,6 +2442,7 @@ async function writeNote({
 }
 
 module.exports = {
+  getRecruiterSubmittals,
   getAuthToken,
   getJobs,
   getJobById,

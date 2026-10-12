@@ -357,19 +357,8 @@ const JobDetailPage = (() => {
             ? `<div class="empty" style="padding:20px 0">
                  <p>No candidates have applied to this job yet.</p>
                </div>`
-            : `<!-- Clickable candidate name chips -->
-               <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:0">
-                 ${pageState.allCandidates.map(c => `
-                   <button class="btn btn-secondary cand-chip"
-                           data-cand="${c.id}"
-                           data-source="pipeline"
-                           style="font-size:12px;padding:8px 14px;text-align:left">
-                     <strong>${escapeHtml(c.name)}</strong>
-                     <span style="display:block;font-size:10px;color:var(--text-muted);margin-top:2px">
-                       ${escapeHtml(c.applicationStatus || c.submittal?.startStatus || 'Submitted')} · ${formatDate(c.applicationDate || c.submittal?.submittalDate)}
-                     </span>
-                   </button>`).join('')}
-               </div>`}
+            : `<div id="assignedCandList" style="margin-top:12px"></div>
+               <div id="assignedCandPager" style="display:flex;justify-content:center;align-items:center;gap:12px;margin-top:14px"></div>`}
         </div>
 
         <!-- ── AI ENGAGED ── -->
@@ -424,24 +413,58 @@ const JobDetailPage = (() => {
       renderSplitView(document.getElementById('content') || document.querySelector('.content'));
     };
 
-    // ── Candidate chip click → split view ──
-    document.querySelectorAll('.cand-chip').forEach(btn => {
-      btn.onclick = async () => {
-        pageState.selectedCandId = btn.dataset.cand;
-        pageState.selectedCandSource = btn.dataset.source || 'pipeline';
-        await hydrateSelectedCandidate(btn.dataset.cand);
-        renderSplitView(document.querySelector('.content'));
-      };
-    });
+    // ── Assigned candidates: 2-column list, 20 per page, with search ──
+    const CAND_PAGE_SIZE = 20;
+    let candPage = 0;
+    let candQuery = '';
+    const renderAssignedCandidates = () => {
+      const listEl = document.getElementById('assignedCandList');
+      const pagerEl = document.getElementById('assignedCandPager');
+      if (!listEl) return;
+      const rows = pageState.allCandidates.filter(c =>
+        !candQuery || `${c.name} ${c.applicationStatus || ''} ${c.submittal?.startStatus || ''}`.toLowerCase().includes(candQuery));
+      const pages = Math.max(1, Math.ceil(rows.length / CAND_PAGE_SIZE));
+      candPage = Math.min(candPage, pages - 1);
+      const slice = rows.slice(candPage * CAND_PAGE_SIZE, (candPage + 1) * CAND_PAGE_SIZE);
 
-    // ── Assigned candidate search ──
+      listEl.innerHTML = slice.length ? `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 24px">
+          ${slice.map(c => `
+            <button class="btn btn-secondary cand-chip" data-cand="${c.id}" data-source="pipeline"
+                    style="font-size:12px;padding:10px 14px;text-align:left;width:100%">
+              <strong>${escapeHtml(c.name)}</strong>
+              <span style="display:block;font-size:10px;color:var(--text-muted);margin-top:2px">
+                ${escapeHtml(c.applicationStatus || c.submittal?.startStatus || 'Submitted')} · ${formatDate(c.applicationDate || c.submittal?.submittalDate)}
+              </span>
+            </button>`).join('')}
+        </div>` : '<div class="empty" style="padding:12px 0"><p>No candidates match.</p></div>';
+
+      pagerEl.innerHTML = rows.length > CAND_PAGE_SIZE ? `
+        <button class="btn btn-sm btn-secondary" id="candPrev" ${candPage === 0 ? 'disabled' : ''}>← Previous</button>
+        <span style="font-size:12px;color:var(--text-muted)">Page ${candPage + 1} of ${pages}</span>
+        <button class="btn btn-sm btn-secondary" id="candNext" ${candPage >= pages - 1 ? 'disabled' : ''}>Next →</button>` : '';
+      const prev = document.getElementById('candPrev');
+      const next = document.getElementById('candNext');
+      if (prev) prev.onclick = () => { candPage--; renderAssignedCandidates(); };
+      if (next) next.onclick = () => { candPage++; renderAssignedCandidates(); };
+
+      listEl.querySelectorAll('.cand-chip').forEach(btn => {
+        btn.onclick = async () => {
+          pageState.selectedCandId = btn.dataset.cand;
+          pageState.selectedCandSource = btn.dataset.source || 'pipeline';
+          await hydrateSelectedCandidate(btn.dataset.cand);
+          renderSplitView(document.querySelector('.content'));
+        };
+      });
+    };
+    renderAssignedCandidates();
+
     const candidateSearch = document.getElementById('jobCandidateSearch');
     if (candidateSearch) {
       candidateSearch.oninput = () => {
-        const q = candidateSearch.value.trim().toLowerCase();
-        document.querySelectorAll('.cand-chip').forEach(btn => {
-          btn.style.display = !q || btn.textContent.toLowerCase().includes(q) ? '' : 'none';
-        });
+        candQuery = candidateSearch.value.trim().toLowerCase();
+        candPage = 0;
+        renderAssignedCandidates();
       };
     }
 
