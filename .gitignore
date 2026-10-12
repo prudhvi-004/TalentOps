@@ -60,3 +60,6 @@ jobdiva-*.json
 s*.txt
 sub_*.json
 UsersHARSHA*.json
+
+# Runtime state (AI note audit / automated tasks)
+data/runtime/

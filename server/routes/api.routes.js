@@ -32,6 +32,9 @@ const { requireLogin } =
 const atsService =
   require('../services/ats.service');
 
+const aiNotesService =
+  require('../services/ai-notes.service');
+
 
 // Apply login protection to all /api routes
 router.use(requireLogin);
@@ -219,6 +222,24 @@ router.get(
 
 
 // ----------------------------------------------------------
+// GET /api/tasks?status=pending|completed
+// Automated tasks created by the 120-minute AI note audit.
+// Recruiters see their own tasks; admins see all.
+// ----------------------------------------------------------
+router.get('/tasks', (req, res) => {
+  const isAdmin = req.user?.role === 'ADMIN';
+  const tasks = aiNotesService.listTasks({
+    // Recruiters: only tasks assigned to their own JobDiva recruiter ID.
+    all: isAdmin,
+    assigneeId: req.user?.jobdivaUserId,
+    assigneeName: req.user?.name,
+    jobId: req.query.jobId,
+    status: req.query.status,
+  });
+  res.json({ success: true, data: tasks });
+});
+
+// ----------------------------------------------------------
 // GET /api/jobs/:id/ai-engaged
 // Returns AI Engaged candidates for a specific job.
 //
@@ -253,8 +274,16 @@ router.get(
 
       // [API-CONNECT]
       // Fetches and filters AI Engaged candidates
-      const aiEngaged =
-        await atsService.getAIEngagedForJob(id);
+      // JobDiva: derived from JobNotesListDetail AI notes
+      // (see ai-notes.service.js). Mock: data/ai-engaged.json.
+      let aiEngaged;
+      if (process.env.ATS_PROVIDER === 'jobdiva') {
+        // Task owner = the job's primary recruiter (not the viewer).
+        aiEngaged = await aiNotesService.getAIEngagedForJob(
+          id, () => atsService.getJobAssignment(id));
+      } else {
+        aiEngaged = await atsService.getAIEngagedForJob(id);
+      }
 
 
       // aiEngaged returns:

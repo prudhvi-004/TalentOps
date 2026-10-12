@@ -149,6 +149,10 @@ const ApiService = (() => {
    * Server route: GET /api/jobs/:id/ai-engaged
    * Returns: { success, data: { applicants: [...], candidates: [...] } }
    */
+  async function getTasks(status) {
+    return request(`/api/tasks${status ? `?status=${status}` : ''}`);
+  }
+
   async function getAIEngagedForJob(jobId) {
     return request(`/api/jobs/${jobId}/ai-engaged`);
   }
@@ -205,6 +209,7 @@ const ApiService = (() => {
     getJobActivity,
     getCandidatesForJob,
     getAIEngagedForJob,
+    getTasks,
     getCandidateById,
     writeNote,
   };

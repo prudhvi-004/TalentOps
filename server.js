@@ -57,6 +57,7 @@ const localAuthRoutes = require('./server/routes/local-auth.routes');
 const oidcAuthRoutes = require('./server/routes/auth.routes');
 const adminRoutes = require('./server/routes/admin.routes');
 const apiRoutes = require('./server/routes/api.routes');
+const aiNotesService = require('./server/services/ai-notes.service');
 const { requireLogin, requireRole } = require('./server/middleware/auth');
 
 const app = express();
@@ -79,7 +80,15 @@ app.use(express.static(path.join(__dirname, 'public'), { index: false }));
 app.use('/', AUTH_PROVIDER === 'local' ? localAuthRoutes : oidcAuthRoutes);
 
 app.get('/api/auth/config', (req, res) => res.json({ developmentMockAuth: false, sandboxLocalAuth: AUTH_PROVIDER === 'local' }));
-app.get('/api/me', requireLogin, (req, res) => res.json({ success: true, data: req.user }));
+app.get('/api/me', requireLogin, (req, res) => {
+  // Warm the recruiter's jobs + submittals in the background so the
+  // dashboard/jobs pages are served from memory instead of waiting on JobDiva.
+  if (process.env.ATS_PROVIDER === 'jobdiva' && req.user?.jobdivaUserId) {
+    const atsService = require('./server/services/ats.service');
+    atsService.getSubmittals().catch(e => console.warn('[warmup]', e.message));
+  }
+  res.json({ success: true, data: req.user });
+});
 app.use('/api/admin', requireLogin, requireRole('ADMIN'), adminRoutes);
 app.use('/api', apiRoutes);
 
@@ -95,6 +104,7 @@ async function start() {
   if (AUTH_PROVIDER === 'local') {
     console.warn('SANDBOX local authentication enabled. Never use this mode in production. Run npm run seed:users after configuring the seed settings.');
   }
+  aiNotesService.startHourlyPoll();
   app.listen(PORT, () => {
     console.log(`TalentOps running on http://localhost:${PORT}`);
     console.log(`ATS Provider: ${process.env.ATS_PROVIDER || 'mock'} | Auth provider: ${AUTH_PROVIDER}`);

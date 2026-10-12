@@ -15,7 +15,7 @@ const JobsPage = (() => {
   // Beyond 12 jobs, the page switches from a grid of cards to a compact
   // list (row-per-job) once the user scrolls past where the 12th card
   // ends — and back to grid when scrolled back above that point.
-  const GRID_TO_LIST_THRESHOLD = 12;
+  const GRID_TO_LIST_THRESHOLD = 8;
   const SCROLL_HYSTERESIS = 24; // px buffer so the switch doesn't flicker right at the boundary
 
   let viewMode = 'grid';
@@ -100,8 +100,8 @@ const JobsPage = (() => {
           ...(j.requirements || []),
         ].map(v => String(v || '').toLowerCase());
         return (!status || j.status === status) &&
-               (!priority || j.priorityLevel === priority) &&
-               (!search || haystack.some(v => v.includes(search)));
+          (!priority || j.priorityLevel === priority) &&
+          (!search || haystack.some(v => v.includes(search)));
       });
       currentFiltered = filtered;
       // A fresh filter result starts back at the top in grid mode — the

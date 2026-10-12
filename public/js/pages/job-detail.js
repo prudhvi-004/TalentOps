@@ -480,8 +480,9 @@ const JobDetailPage = (() => {
                   data-cand="${c.id}"
                   data-ai-category="${c.aiCategory || 'Applicant'}"
                   style="font-size:12px;padding:6px 14px;
-                         border-color:var(--primary);color:var(--primary)">
-            🤖 ${c.name}
+                         border-color:var(--primary);color:var(--primary);
+                         ${c.band ? `border-left:4px solid ${({green:'#16a34a',red:'#dc2626',orange:'#f97316'})[c.band]};` : ''}">
+            🤖 ${c.name}${c.flagged ? ' <span title="Evaluated in both sections" style="color:#f97316">⚠</span>' : ''}${c.responded ? ' <span title="Recruiter note added">✍️</span>' : ''}
             <span class="ai-stage-badge" style="font-size:10px;padding:2px 6px;margin-left:4px">
               ${c.aiStageLabel || c.aiStage || ''}
             </span>
