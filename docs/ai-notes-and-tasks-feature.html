@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Notes and Task Bar</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --text: #1d2330; --muted: #5d6677; --border: #dfe3ea;
+    --accent: #2f5fd0; --accent-soft: #e8eefc; --code-bg: #eef0f4;
+    --green: #16a34a; --red: #dc2626; --orange: #f97316;
+    --green-soft: #e3f6ea; --red-soft: #fde8e8; --orange-soft: #fff0e0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151b; --card: #1b2029; --text: #e6e9ef; --muted: #9aa3b5; --border: #2c3341;
+      --accent: #7b9cf0; --accent-soft: #232c45; --code-bg: #242a36;
+      --green-soft: #17301f; --red-soft: #3a1c1c; --orange-soft: #3a2a17;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 24px 16px 64px; }
+  header h1 { margin: 0 0 6px; font-size: 28px; }
+  header p { margin: 0; color: var(--muted); }
+  nav { display: flex; flex-wrap: wrap; gap: 8px; margin: 20px 0 8px; }
+  nav a {
+    text-decoration: none; color: var(--accent); background: var(--accent-soft);
+    padding: 4px 12px; border-radius: 999px; font-size: 13px;
+  }
+  section { margin-top: 28px; }
+  h2 { font-size: 21px; margin: 0 0 10px; }
+  h3 { font-size: 16px; margin: 18px 0 6px; }
+  p { margin: 8px 0; }
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px 18px; margin: 12px 0;
+  }
+  code {
+    background: var(--code-bg); padding: 1px 6px; border-radius: 4px;
+    font: 13px ui-monospace, SFMono-Regular, Consolas, monospace; word-break: break-word;
+  }
+  pre {
+    background: var(--code-bg); padding: 12px 14px; border-radius: 8px;
+    overflow-x: auto; font: 13px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace;
+  }
+  pre code { background: none; padding: 0; }
+  table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 14px; }
+  .tablewrap { overflow-x: auto; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 13px; }
+  .flow { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; }
+  .step {
+    background: var(--card); border: 1px solid var(--border); border-left: 4px solid var(--accent);
+    border-radius: 8px; padding: 10px 14px;
+  }
+  .step b { display: block; }
+  .arrow { text-align: center; color: var(--muted); line-height: 1; }
+  .band { display: inline-block; width: 10px; height: 14px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+  .tag { display: inline-block; padding: 1px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .tag.green { background: var(--green-soft); color: var(--green); }
+  .tag.red { background: var(--red-soft); color: var(--red); }
+  .tag.orange { background: var(--orange-soft); color: var(--orange); }
+  .note {
+    border-left: 4px solid var(--orange); background: var(--orange-soft);
+    padding: 10px 14px; border-radius: 6px; margin: 12px 0;
+  }
+  .note.info { border-left-color: var(--accent); background: var(--accent-soft); }
+  ul { padding-left: 22px; margin: 6px 0; }
+  li { margin: 3px 0; }
+  .tl { border-left: 2px solid var(--border); margin: 12px 0 12px 8px; padding-left: 16px; }
+  .tl div { margin: 8px 0; position: relative; }
+  .tl div::before {
+    content: ""; position: absolute; left: -23px; top: 8px; width: 10px; height: 10px;
+    border-radius: 50%; background: var(--accent);
+  }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 680px) { .grid2 { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>AI Notes &amp; Task Bar</h1>
+  <p>How TalentOps reads the notes written by the Sense AI user in JobDiva, shows them on each job, and turns missed follow-ups into automated tasks.</p>
+</header>
+
+<nav>
+  <a href="#overview">Overview</a>
+  <a href="#files">Files changed</a>
+  <a href="#display">1. Display logic</a>
+  <a href="#audit">2. Audit &amp; tasks</a>
+  <a href="#api">API endpoints</a>
+  <a href="#ui">Front end</a>
+  <a href="#speed">Speed &amp; rate limits</a>
+  <a href="#config">Settings &amp; storage</a>
+  <a href="#test">How to test</a>
+  <a href="#limits">Limits &amp; to-do</a>
+</nav>
+
+<!-- ===================================================== -->
+<section id="overview">
+  <h2>Overview</h2>
+  <p>The Sense AI system talks to candidates and, after each conversation, drops a <b>note</b> on the candidate's record in JobDiva. TalentOps now does two things with those notes:</p>
+  <div class="grid2">
+    <div class="card">
+      <h3 style="margin-top:0">1. Display</h3>
+      <p>On a job's detail page, AI-evaluated people appear under <b>Engaged Applicants</b> or <b>Engaged Candidates</b>, with a green / red / orange colour band.</p>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">2. Audit &amp; tasks</h3>
+      <p>If no recruiter follows up (a <code>REC_AI</code> note) within <b>120 minutes</b>, an automated task is created for the job's primary recruiter. It closes itself once a follow-up note exists.</p>
+    </div>
+  </div>
+
+  <h3>The big picture</h3>
+  <div class="flow">
+    <div class="step"><b>JobDiva</b>GET <code>/apiv2/bi/JobNotesListDetail?jobId=…</code> returns every note on a job (system notes, recruiter notes, AI notes).</div>
+    <div class="arrow">▼</div>
+    <div class="step"><b>ats.service.js → getJobNotes()</b>Calls that endpoint (rate-limited and retried) and returns the rows.</div>
+    <div class="arrow">▼</div>
+    <div class="step"><b>ai-notes.service.js</b>Filters to AI notes, classifies them, finds follow-ups, builds the candidate list, creates / closes tasks, and saves state.</div>
+    <div class="arrow">▼</div>
+    <div class="step"><b>api.routes.js</b><code>GET /api/jobs/:id/ai-engaged</code> and <code>GET /api/tasks</code>.</div>
+    <div class="arrow">▼</div>
+    <div class="step"><b>Browser</b>Job page shows the coloured sections; the Tasks page shows the Automated tab.</div>
+  </div>
+</section>
+
+<!-- ===================================================== -->
+<section id="files">
+  <h2>Files created or changed</h2>
+  <div class="tablewrap">
+  <table>
+    <tr><th>File</th><th>What it does for this feature</th></tr>
+    <tr><td><code>server/services/ai-notes.service.js</code> <span class="tag green">new</span></td><td>The core. Classifies notes, builds the AI candidate list, runs the 120-minute audit, creates and closes tasks, saves state to disk, runs the hourly refresh.</td></tr>
+    <tr><td><code>server/services/ats.service.js</code></td><td>Added <code>getJobNotes()</code> (line ~2253) and <code>getJobAssignment()</code> (~2230) plus <code>pickPrimaryRecruiter()</code> (~858). Also all the speed work (see <a href="#speed">Speed</a>).</td></tr>
+    <tr><td><code>server/config/ats.config.js</code></td><td>Registered the endpoint: <code>jobNotes: '/apiv2/bi/JobNotesListDetail'</code> (line 141).</td></tr>
+    <tr><td><code>server/routes/api.routes.js</code></td><td>The <code>ai-engaged</code> route now reads from the notes service when <code>ATS_PROVIDER=jobdiva</code>; new <code>GET /api/tasks</code> route.</td></tr>
+    <tr><td><code>server.js</code></td><td>Starts the hourly refresh (<code>aiNotesService.startHourlyPoll()</code>) and pre-loads the recruiter's jobs and submittals when <code>/api/me</code> is called.</td></tr>
+    <tr><td><code>public/js/pages/job-detail.js</code></td><td>Colour band, ⚠ (both sections) and ✍️ (recruiter responded) on each AI candidate chip (line ~484).</td></tr>
+    <tr><td><code>public/js/components/ai-engaged.js</code></td><td>Same bands plus a "Recruiter note added" line on the full card layout (<code>bandStyle</code>, <code>respondedHtml</code>).</td></tr>
+    <tr><td><code>public/js/pages/tasks.js</code> <span class="tag green">new</span></td><td>The Tasks page with an <b>Automated</b> tab and Pending / Completed filter.</td></tr>
+    <tr><td><code>public/js/app.js</code>, <code>public/js/services/api.service.js</code></td><td>The <code>/tasks</code> route now loads <code>tasks.js</code>; <code>ApiService.getTasks()</code> added.</td></tr>
+    <tr><td><code>.gitignore</code></td><td>Ignores <code>data/runtime/</code> (saved audit state and caches).</td></tr>
+  </table>
+  </div>
+  <div class="note info">None of this is committed. Everything is an uncommitted change on the <code>notes</code> branch.</div>
+</section>
+
+<!-- ===================================================== -->
+<section id="display">
+  <h2>1. Display logic</h2>
+  <p>Implemented in <code>ai-notes.service.js</code> — <code>classify()</code> (line 95) and <code>buildItems()</code> (line 108).</p>
+
+  <h3>Step 1 — is it an AI note we care about?</h3>
+  <p>A note is used only if <b>both</b> are true:</p>
+  <ul>
+    <li>It was written by the AI user: <code>RECRUITERID</code> equals <code>1453881</code> (or <code>RECRUITERNAME</code> is "Sense Messaging").</li>
+    <li>Its <code>TYPENAME</code> is one of the four known types below.</li>
+  </ul>
+  <p>Anything else is ignored.</p>
+
+  <div class="tablewrap">
+  <table>
+    <tr><th>TYPENAME in JobDiva</th><th>Section on the job page</th><th>Colour</th></tr>
+    <tr><td>Sense AI Auto sourcing Evaluation: Positive</td><td>Engaged Candidates</td><td><span class="tag green">green</span></td></tr>
+    <tr><td>Sense AI Auto sourcing Evaluation: Negative</td><td>Engaged Candidates</td><td><span class="tag red">red</span></td></tr>
+    <tr><td>Sense AI Applicant Review: Positive</td><td>Engaged Applicants</td><td><span class="tag green">green</span></td></tr>
+    <tr><td>Sense AI Applicant Review: Negative</td><td>Engaged Applicants</td><td><span class="tag red">red</span></td></tr>
+  </table>
+  </div>
+
+  <h3>Step 2 — one entry per candidate</h3>
+  <ul>
+    <li>All AI notes for a candidate are grouped; the <b>most recent</b> note decides the section and the green/red colour.</li>
+    <li>If the candidate has AI notes in <b>both</b> sections, the band becomes <span class="tag orange">orange</span> and a ⚠ marker is shown (flag for attention). The most recent note still decides which section they are listed in.</li>
+    <li>The score is read from the note text ("Score on evaluation: 8" or "AI Conviction score: 3").</li>
+  </ul>
+
+  <h3>Step 3 — what each entry contains</h3>
+<pre><code>{
+  id: "6203827265891",            // candidate id from the note
+  jobId: "29424659",
+  name: "Ileana Martinez",
+  aiCategory: "Candidate",        // or "Applicant"
+  sentiment: "positive",          // or "negative"
+  band: "green",                  // green | red | orange
+  flagged: false,                 // true = in both sections
+  aiStageLabel: "Sense AI Auto sourcing Evaluation: Positive",
+  score: 8,
+  aiNoteAt: "2026-10-07T22:53:57.000Z",   // starts the 120-minute clock
+  responded: false,               // a REC_AI note exists after aiNoteAt
+  respondedAt: null
+}</code></pre>
+
+  <h3>Opening a candidate</h3>
+  <p>Clicking a candidate opens the profile using the <b>Candidate ID from the note</b>. The profile is fetched from JobDiva by the existing candidate lookup (<code>getCandidateById</code>), so notes, resume and actions work as they do for any other candidate.</p>
+
+  <div class="note">
+    <b>Timestamps.</b> <code>DATECREATED</code> comes without a timezone (e.g. <code>2026-10-08T12:31:57</code>). In your sample, <code>ACTIONDATE</code> is exactly 4 hours later, so I treat it as <b>US Eastern</b> time and convert (<code>parseNoteDate()</code>, line 81). If your account is in another zone, set <code>JOBDIVA_NOTE_TIMEZONE</code>.
+  </div>
+</section>
+
+<!-- ===================================================== -->
+<section id="audit">
+  <h2>2. Audit &amp; task bar logic</h2>
+  <p>Implemented in <code>reconcileTasks()</code> (line 163) and <code>buildItems()</code>.</p>
+
+  <h3>The rule in one sentence</h3>
+  <p>After an AI note, if nobody drops a <code>REC_AI</code> note on the <b>same candidate and same job</b> within 120 minutes, create one task for the job's primary recruiter.</p>
+
+  <div class="tl">
+    <div><b>12:31:57</b> — AI note lands on John Cena / Job 9921. The clock starts from the note's own <code>DATECREATED</code> (not from when TalentOps first saw it).</div>
+    <div><b>13:31:57</b> — Hourly refresh runs. No <code>REC_AI</code> note yet; still inside the window, so nothing happens.</div>
+    <div><b>14:31:57</b> — 120 minutes passed with no follow-up. The next refresh creates the task: <i>"Review AI Evaluated Candidate — John Cena"</i>.</div>
+    <div><b>later</b> — A recruiter drops a <code>REC_AI</code> note. The next refresh marks the candidate <b>responded</b> (✍️ shown) and the task becomes <b>completed</b> automatically.</div>
+  </div>
+
+  <h3>The five rules, and where each lives</h3>
+  <div class="tablewrap">
+  <table>
+    <tr><th>Rule</th><th>How it is done</th></tr>
+    <tr><td>1. No recruiter filter on the follow-up</td><td>Any note with <code>TYPENAME = REC_AI</code> on the same candidate and job, created after the AI note, counts. We do not check who wrote it.</td></tr>
+    <tr><td>2. The 120 minutes start at the AI note's time</td><td><code>aiNoteAt</code> comes from the note's <code>DATECREATED</code> in JobDiva.</td></tr>
+    <tr><td>3. One task per candidate per job</td><td>Task id is <code>ai-&lt;jobId&gt;-&lt;candidateId&gt;-&lt;aiNoteId&gt;</code>. Same note never creates a second task. A <b>newer AI note</b> has a new id, so the clock restarts and a new task is possible.</td></tr>
+    <tr><td>4. Task closes itself</td><td>When the refresh finds a <code>REC_AI</code> note after the AI note, status becomes <code>completed</code> with a completion time.</td></tr>
+    <tr><td>5. The ✍️ indicator persists</td><td>It is recomputed from the notes each refresh. Once a follow-up exists it stays; the <b>first</b> follow-up is the one recorded.</td></tr>
+  </table>
+  </div>
+
+  <h3>What a task looks like</h3>
+<pre><code>{
+  id: "ai-29424659-6579819323960-1247122150",
+  type: "Automated",
+  status: "pending",              // later "completed"
+  jobId: "29424659",
+  candidateId: "6579819323960",
+  candidateName: "Atrinity Thomas",
+  assigneeName: "V Mithra",       // job's primary recruiter
+  priority: "High",               // High if AI said Positive, else Normal
+  title: "Review AI Evaluated Candidate — Atrinity Thomas",
+  detail: "AI evaluated this candidate at … No follow-up note has been recorded. Please review and drop a REC_AI note.",
+  createdAt: "…", completedAt: null
+}</code></pre>
+
+  <h3>Who gets the task</h3>
+  <ul>
+    <li>The owner is the job's <b>primary recruiter</b>, looked up by <code>getJobAssignment()</code> using JobDiva's <code>JobDetail</code> and <code>JobsInternalUsersDetail</code>.</li>
+    <li><code>pickPrimaryRecruiter()</code> reads the <code>PRIMARYRECRUITER="1"</code> flag and <code>FIRSTNAME</code>/<code>LASTNAME</code> fields. (The earlier code looked for <code>role</code>/<code>userName</code>, which JobDiva does not send, so no recruiter was ever found.)</li>
+    <li>On <code>GET /api/tasks</code>, a recruiter sees only their own tasks; an admin sees all. Ownership matches on JobDiva id <b>or name</b> (see <a href="#limits">Limits</a>).</li>
+  </ul>
+
+  <h3>When the check runs</h3>
+  <ul>
+    <li><b>On demand:</b> opening a job page loads its AI notes. Cached results show instantly; if older than 5 minutes they refresh in the background (<code>FRESH_MS</code>).</li>
+    <li><b>Hourly:</b> <code>startHourlyPoll()</code> (line 257) re-syncs every job that has been loaded before, so tasks appear and close even if nobody opens the page.</li>
+    <li>State is saved to <code>data/runtime/ai-audit.json</code>, so tasks survive restarts.</li>
+  </ul>
+</section>
+
+<!-- ===================================================== -->
+<section id="api">
+  <h2>API endpoints</h2>
+  <h3>Inside TalentOps</h3>
+  <div class="tablewrap">
+  <table>
+    <tr><th>Endpoint</th><th>Returns</th></tr>
+    <tr><td><code>GET /api/jobs/:id/ai-engaged</code></td><td><code>{ applicants: […], candidates: […] }</code> — the entries described above, for one job.</td></tr>
+    <tr><td><code>GET /api/tasks?status=pending|completed&amp;jobId=…</code></td><td>Automated tasks for the logged-in recruiter (all tasks for admins).</td></tr>
+  </table>
+  </div>
+  <h3>JobDiva endpoints used</h3>
+  <div class="tablewrap">
+  <table>
+    <tr><th>JobDiva endpoint</th><th>Used for</th></tr>
+    <tr><td><code>GET /apiv2/bi/JobNotesListDetail?jobId=</code></td><td>The notes themselves (the source of everything).</td></tr>
+    <tr><td><code>GET /apiv2/bi/JobDetail</code></td><td>Job title for the task.</td></tr>
+    <tr><td><code>GET /apiv2/bi/JobsInternalUsersDetail</code></td><td>Who the job's primary recruiter is.</td></tr>
+    <tr><td><code>GET /apiv2/bi/CandidateDetail</code> and friends</td><td>Full profile when a candidate is clicked (existing code).</td></tr>
+  </table>
+  </div>
+  <p>Everything above is read-only. The feature never writes to JobDiva.</p>
+</section>
+
+<!-- ===================================================== -->
+<section id="ui">
+  <h2>Front end</h2>
+  <div class="card">
+    <h3 style="margin-top:0">Job detail page — <code>job-detail.js</code></h3>
+    <p>Each AI chip gets a left border in the band colour:</p>
+    <p>
+      <span class="band" style="background:var(--green)"></span><span class="tag green">Positive</span>
+      &nbsp;<span class="band" style="background:var(--red)"></span><span class="tag red">Negative</span>
+      &nbsp;<span class="band" style="background:var(--orange)"></span><span class="tag orange">In both sections ⚠</span>
+    </p>
+    <p>A ✍️ appears on the chip when a recruiter has already followed up.</p>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0">Tasks page — <code>tasks.js</code></h3>
+    <p>The sidebar's Tasks item used to be a placeholder. It now shows an <b>Automated</b> tab with <b>Pending</b> and <b>Completed</b> filters. Clicking a task opens its job.</p>
+  </div>
+  <div class="note info">
+    <code>ai-engaged.js</code> (the fuller card layout with the "✍️ Recruiter note added &lt;time&gt;" line) has the band and responded helpers in place, but the app does not currently load that component — the job page renders its own chips. So today the ✍️ appears as a small marker on the chip, not as the full "Recruiter note added Oct 8, 2:45pm" line.
+  </div>
+</section>
+
+<!-- ===================================================== -->
+<section id="speed">
+  <h2>Speed &amp; rate limits</h2>
+  <p>Pages were very slow and JobDiva returned <code>429 Request Limit Exceeded</code>. All of this is in <code>ats.service.js</code>.</p>
+  <div class="tablewrap">
+  <table>
+    <tr><th>Change</th><th>Effect</th></tr>
+    <tr><td>Stale-while-revalidate cache (<code>swr()</code>, line 92)</td><td>Once data is loaded it is shown instantly; if older than a few minutes it refreshes in the background.</td></tr>
+    <tr><td>Disk cache in <code>data/runtime/cache/</code></td><td>Server restarts start warm instead of re-fetching hundreds of jobs.</td></tr>
+    <tr><td>Concurrency cap (<code>JOBDIVA_MAX_CONCURRENT</code>, default 4)</td><td>Stops bursts of parallel calls from tripping the rate limit.</td></tr>
+    <tr><td>Retry with back-off on 429</td><td>Up to 6 retries, honouring JobDiva's <code>Retry-After</code> header.</td></tr>
+    <tr><td>Job list returns after core details</td><td>Contacts and recruiter names load in the background (<code>enrichJobs()</code>). First load dropped from ~86 s to ~31 s.</td></tr>
+    <tr><td>Candidates for a job fetched in batches</td><td>Was 2 calls per person; now one call per 150 / 25 people. 12 candidates: 22.8 s → 5.3 s, with identical results.</td></tr>
+    <tr><td>Job activity cached</td><td>The recruiter-scope check runs first, so cached data is never shown to someone who can't see the job.</td></tr>
+    <tr><td>Pre-load on login</td><td><code>/api/me</code> starts loading the recruiter's jobs and submittals in the background.</td></tr>
+  </table>
+  </div>
+  <p>Measured after a restart: jobs 347 ms (811 jobs), submittals 78 ms, other list pages 55–75 ms, AI notes ~50–70 ms.</p>
+</section>
+
+<!-- ===================================================== -->
+<section id="config">
+  <h2>Settings &amp; storage</h2>
+  <div class="tablewrap">
+  <table>
+    <tr><th>Setting (in <code>.env</code>)</th><th>Default</th><th>Meaning</th></tr>
+    <tr><td><code>AI_NOTE_USER_ID</code></td><td>1453881</td><td>JobDiva user id of the AI messaging user.</td></tr>
+    <tr><td><code>AI_NOTE_USER_NAME</code></td><td>Sense Messaging</td><td>Fallback match on the author's name.</td></tr>
+    <tr><td><code>JOBDIVA_NOTE_TIMEZONE</code></td><td>America/New_York</td><td>Zone used to read <code>DATECREATED</code>.</td></tr>
+    <tr><td><code>JOBDIVA_MAX_CONCURRENT</code></td><td>4</td><td>Max simultaneous JobDiva calls.</td></tr>
+  </table>
+  </div>
+  <p>Saved locally, both git-ignored:</p>
+  <ul>
+    <li><code>data/runtime/ai-audit.json</code> — per-job AI entries and all tasks.</li>
+    <li><code>data/runtime/cache/</code> — jobs, submittals, candidates, job activity.</li>
+  </ul>
+  <p>In <code>ATS_PROVIDER=mock</code> mode, the old sample file <code>data/ai-engaged.json</code> is still used and no tasks are created.</p>
+</section>
+
+<!-- ===================================================== -->
+<section id="test">
+  <h2>How to test</h2>
+  <p>A scan of the 811 jobs for recruiter 1589042 found <b>93 jobs with AI notes</b> (17 open, 15 on hold, 56 closed, 5 filled). Good ones to open:</p>
+  <div class="tablewrap">
+  <table>
+    <tr><th>Job ID</th><th>Title</th><th>Applicants</th><th>Candidates</th></tr>
+    <tr><td>29217936</td><td>Business Analyst II - Process Management (open)</td><td>5</td><td>1</td></tr>
+    <tr><td>29378831</td><td>Senior Engineer, Product - Embedded Software (open)</td><td>17</td><td>3</td></tr>
+    <tr><td>29394772</td><td>Data Product Owner — Rubrik (open)</td><td>2</td><td>2</td></tr>
+    <tr><td>29051672</td><td>Manufacturing Engineering Technician I - Assembly (open)</td><td>0</td><td>1</td></tr>
+    <tr><td>29389488</td><td>IT Data Analyst IV - Data Engineer (on hold) — longest list</td><td>34</td><td>5</td></tr>
+  </table>
+  </div>
+  <ol>
+    <li>Restart the server (<code>node server.js</code>) so it runs the latest code, and wait if you just saw 429 errors.</li>
+    <li>Log in as the recruiter, open one of the jobs above, and wait for it to finish loading.</li>
+    <li>Check the Engaged Applicants / Candidates counts match the table, and the band colours match positive / negative.</li>
+    <li>Open <b>Tasks → Automated</b> to see tasks for jobs where you are the primary recruiter.</li>
+  </ol>
+  <div class="note">
+    The follow-up path (✍️ and auto-close) is <b>not yet proven on real data</b>: none of the 93 jobs has a <code>REC_AI</code> note. To test it, add a <code>REC_AI</code> note on one of these candidates in JobDiva, then reload the job after the next refresh.
+  </div>
+</section>
+
+<!-- ===================================================== -->
+<section id="limits">
+  <h2>Known limits &amp; to-do</h2>
+  <ul>
+    <li><b>Task owner matching by name.</b> JobDiva's job-users rows give a contact id, not the user id, so a task is matched to the logged-in recruiter by id <i>or name</i>. Two recruiters with the same name would see each other's tasks. A reliable user-id source would fix this.</li>
+    <li><b>Time zone is an assumption</b> (US Eastern, from your sample). A wrong zone shifts the 120-minute clock by hours.</li>
+    <li><b><code>REC_AI</code> name is assumed.</b> The follow-up check looks for <code>TYPENAME</code> exactly <code>REC_AI</code>. This should be confirmed against a real recruiter note.</li>
+    <li><b>Hourly refresh only covers jobs already opened</b> (it re-syncs the jobs saved in <code>ai-audit.json</code>). It does not scan every job in the account.</li>
+    <li><b>Old notes create tasks.</b> Any AI note older than 120 minutes with no follow-up gets a task, including notes on jobs that are already closed. A rule such as "skip closed jobs" or "ignore notes older than N days" may be wanted.</li>
+    <li><b>Sandbox vs main.</b> All JobDiva calls are read-only. Nothing is committed or written to the main instance.</li>
+  </ul>
+</section>
+
+</div>
+</body>
+</html>

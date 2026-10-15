@@ -136,7 +136,7 @@ const DashboardPage = (() => {
     ]);
 
     rawData = {
-      submittals: submittals.success ? submittals.data : [],
+      submittals: submittals.success ? submittals.data.filter(r => String(r.type).toLowerCase() === 'external') : [],
       interviews: interviews.success ? interviews.data : [],
       starts: starts.success ? starts.data : [],
       fps: fps.success ? fps.data : [],
@@ -231,11 +231,11 @@ const DashboardPage = (() => {
 
   function openJobsTile() {
     return `
-      <div class="perf-tile" data-nav="/jobs"
+      <div class="perf-tile" data-nav="/jobs?status=open"
            style="border-left:4px solid var(--primary)">
         <div class="perf-label">Open Jobs</div>
         <div class="perf-value" id="openJobsCount">—</div>
-        <div class="perf-target">Total across portfolio</div>
+        <div class="perf-target">Open, posted in last 30 days</div>
         <div class="progress-bar">
           <div class="progress-fill" style="width:100%"></div>
         </div>
@@ -265,15 +265,19 @@ const DashboardPage = (() => {
       return;
     }
 
-    const jobs = result.data;
+    const jobs = [...result.data].sort((a, b) =>
+      new Date(b.postingDateRaw || b.createdAtRaw || 0) - new Date(a.postingDateRaw || a.createdAtRaw || 0));
 
     // Update Open Jobs tile count
-    const openJobs = jobs.filter(j => j.status === 'open');
+    // Same window as the Jobs page: posted in the last 30 days, status open.
+    const cutoff30 = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    const openJobs = jobs.filter(j => j.status === 'open' &&
+      new Date(j.postingDateRaw || j.createdAtRaw || 0).getTime() >= cutoff30);
     const openEl = document.getElementById('openJobsCount');
     if (openEl) openEl.textContent = openJobs.length;
 
     // Render recent job tiles
-    grid.innerHTML = jobs.slice(0, 4).map(job => `
+    grid.innerHTML = jobs.slice(0, 6).map(job => `
       <div class="tile fade-in" data-job="${job.id}" style="cursor:pointer">
         <div class="tile-header">
           <div class="tile-title">${job.title}</div>

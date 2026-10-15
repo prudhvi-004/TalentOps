@@ -32,6 +32,9 @@ const { requireLogin } =
 const atsService =
   require('../services/ats.service');
 
+const aiNotesService =
+  require('../services/ai-notes.service');
+
 
 // Apply login protection to all /api routes
 router.use(requireLogin);
@@ -219,6 +222,30 @@ router.get(
 
 
 // ----------------------------------------------------------
+// GET /api/tasks?status=pending|completed
+// Automated tasks created by the 120-minute AI note audit.
+// Recruiters see their own tasks; admins see all.
+// ----------------------------------------------------------
+router.get('/tasks', async (req, res) => {
+  // Recruiters see tasks for jobs they are tagged on (any job status); admins see all.
+  // Answers from cache; the scan of the last 30 days runs in the background.
+  const isAdmin = req.user?.role === 'ADMIN';
+  if (process.env.ATS_PROVIDER === 'jobdiva') aiNotesService.refreshInBackground();
+  const who = { all: isAdmin, assigneeId: req.user?.jobdivaUserId, assigneeName: req.user?.name };
+  // First visit by this recruiter: scan the last 30 days for their tagged jobs and wait for it
+  // (up to 40s) so the first view isn't empty.
+  if (!isAdmin && (aiNotesService.registerUser(who.assigneeId, who.assigneeName) || !aiNotesService.jobsFor(who).length)
+      && process.env.ATS_PROVIDER === 'jobdiva') {
+    await Promise.race([aiNotesService.scanRecentJobs().catch(() => {}), new Promise(r => setTimeout(r, 40000))]);
+  }
+  // Live: re-read this recruiter's jobs' notes now (jobs read <15s ago are skipped).
+  try { await aiNotesService.syncKnownJobs(aiNotesService.jobsFor(who)); }
+  catch (e) { console.warn('[tasks] live sync failed:', e.message); }
+  const data = aiNotesService.listTasks({ ...who, status: req.query.status, sinceDays: aiNotesService.WINDOW_DAYS });
+  res.json({ success: true, syncing: aiNotesService.isScanning(), data });
+});
+
+// ----------------------------------------------------------
 // GET /api/jobs/:id/ai-engaged
 // Returns AI Engaged candidates for a specific job.
 //
@@ -253,8 +280,16 @@ router.get(
 
       // [API-CONNECT]
       // Fetches and filters AI Engaged candidates
-      const aiEngaged =
-        await atsService.getAIEngagedForJob(id);
+      // JobDiva: derived from JobNotesListDetail AI notes
+      // (see ai-notes.service.js). Mock: data/ai-engaged.json.
+      let aiEngaged;
+      if (process.env.ATS_PROVIDER === 'jobdiva') {
+        // Task owner = the job's primary recruiter (not the viewer).
+        aiEngaged = await aiNotesService.getAIEngagedForJob(
+          id, () => atsService.getJobAssignment(id));
+      } else {
+        aiEngaged = await atsService.getAIEngagedForJob(id);
+      }
 
 
       // aiEngaged returns:
@@ -288,7 +323,7 @@ router.get(
 // ----------------------------------------------------------
 router.get('/submittals', async (req, res) => {
   try {
-    const submittals = await atsService.getSubmittals();
+    const submittals = await atsService.getRecruiterSubmittals();
     res.json({ success: true, data: submittals });
   } catch (error) {
     console.error('Error fetching submittals:', error.message);

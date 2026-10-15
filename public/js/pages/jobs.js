@@ -15,7 +15,7 @@ const JobsPage = (() => {
   // Beyond 12 jobs, the page switches from a grid of cards to a compact
   // list (row-per-job) once the user scrolls past where the 12th card
   // ends — and back to grid when scrolled back above that point.
-  const GRID_TO_LIST_THRESHOLD = 12;
+  const GRID_TO_LIST_THRESHOLD = 8;
   const SCROLL_HYSTERESIS = 24; // px buffer so the switch doesn't flicker right at the boundary
 
   let viewMode = 'grid';
@@ -78,7 +78,17 @@ const JobsPage = (() => {
       return;
     }
 
-    const allJobs = result.data;
+    // Only jobs posted in the last 30 days, newest first.
+    const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    const jobDate = j => new Date(j.postingDateRaw || j.createdAtRaw || 0).getTime();
+    // Coming from the dashboard Open Jobs tile (?status=open): preselect Open.
+    // The 30-day window still applies, matching the tile's count.
+    const urlStatus = new URLSearchParams(window.location.search).get('status') || '';
+    const allJobs = result.data
+      .filter(j => jobDate(j) >= cutoff)
+      .sort((a, b) => jobDate(b) - jobDate(a));
+    const statusSelect = document.getElementById('fltStatus');
+    if (statusSelect && urlStatus) statusSelect.value = urlStatus;
     const initialSearch = new URLSearchParams(window.location.search).get('search') || '';
     const searchInput = document.getElementById('fltSearch');
     if (searchInput) searchInput.value = initialSearch;
@@ -100,10 +110,12 @@ const JobsPage = (() => {
           ...(j.requirements || []),
         ].map(v => String(v || '').toLowerCase());
         return (!status || j.status === status) &&
-               (!priority || j.priorityLevel === priority) &&
-               (!search || haystack.some(v => v.includes(search)));
+          (!priority || j.priorityLevel === priority) &&
+          (!search || haystack.some(v => v.includes(search)));
       });
       currentFiltered = filtered;
+      const sub = document.getElementById('jobsSubtitle');
+      if (sub) sub.textContent = `${filtered.length} jobs · last 30 days · Synced from ATS`;
       // A fresh filter result starts back at the top in grid mode — the
       // old scroll threshold no longer applies to the new list.
       viewMode = 'grid';

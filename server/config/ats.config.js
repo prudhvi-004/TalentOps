@@ -138,6 +138,7 @@ const ATS_CONFIGS = {
       candidatesProfileDetail: '/apiv2/bi/CandidatesProfileDetail',
       candidateResumesDetail: '/apiv2/bi/CandidateResumesDetail',
       candidateNotes: '/apiv2/bi/CandidateNotesListDetail',
+      jobNotes: '/apiv2/bi/JobNotesListDetail',
       candidateAttachments: '/apiv2/bi/CandidateAttachmentList',
     },
     fields: {

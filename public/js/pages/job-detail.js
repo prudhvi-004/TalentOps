@@ -128,7 +128,11 @@ const JobDetailPage = (() => {
         const body = document.createElement('div');
         body.className = 'candidate-note-body';
         body.textContent = noteBody;
+        body.classList.add('note-clamped');
         article.appendChild(body);
+        article.style.cursor = 'pointer';
+        article.title = 'Click to expand / collapse';
+        article.onclick = () => body.classList.toggle('note-clamped');
       }
 
       container.appendChild(article);
@@ -241,6 +245,7 @@ const JobDetailPage = (() => {
         <!-- ── JOB INFO CARD ── -->
         <div class="detail-card">
           <h3>ℹ️ Job Info</h3>
+          <div class="job-info-grid">
           <div class="detail-row">
             <span class="detail-label">Hiring Manager</span>
             <span>${j.hiringManager || '—'}</span>
@@ -248,6 +253,10 @@ const JobDetailPage = (() => {
           <div class="detail-row">
             <span class="detail-label">Client</span>
             <span>${j.client || '—'}${j.industry ? ` · ${j.industry}` : ''}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Optional Ref ID</span>
+            <span>${j.optionalRef || '—'}</span>
           </div>
           <div class="detail-row">
             <span class="detail-label">Primary Recruiter</span>
@@ -285,16 +294,20 @@ const JobDetailPage = (() => {
             <span class="detail-label">Posted</span>
             <span>${j.createdAt || '—'}</span>
           </div>
-          <div class="detail-row"><span class="detail-label">Submittal Due</span><span>${formatDate(j.submittalDue)}</span></div>
           <div class="detail-row"><span class="detail-label">Work Mode</span><span>${j.onsiteRemote || '—'}${j.remotePercentage ? ` · ${j.remotePercentage}% remote` : ''}</span></div>
           <div class="detail-row"><span class="detail-label">Max Submittals</span><span>${j.maxAllowedSubmittals || '—'}</span></div>
           <div class="detail-row"><span class="detail-label">Bill Rate</span><span>${j.billRateMin || '—'}${j.billRateMax ? ` – ${j.billRateMax}` : ''} ${j.billRatePer || ''}</span></div>
           <div class="detail-row"><span class="detail-label">Pay Rate</span><span>${j.payRateMin || '—'}${j.payRateMax ? ` – ${j.payRateMax}` : ''} ${j.payRatePer || ''}</span></div>
+          </div>
         </div>
 
         <!-- ── JOB DESCRIPTION CARD ── -->
         <div class="detail-card">
-          <h3>📋 Job Description</h3>
+          <h3 style="display:flex;justify-content:space-between;align-items:center">
+            <span>📋 Job Description</span>
+            <button class="btn btn-sm btn-secondary" id="jdCardToggle" type="button">⤢ Maximize</button>
+          </h3>
+          <div id="jdCardBody" class="jd-collapsed">
           <p style="font-size:13px;line-height:1.7;margin-bottom:14px">
             ${j.description || 'No description available.'}
           </p>
@@ -323,6 +336,7 @@ const JobDetailPage = (() => {
             </div>
             <p style="font-size:13px;line-height:1.6;margin:0">${j.submittalInstruction}</p>
           </div>` : ''}
+          </div>
         </div>
 
         <!-- ── CANDIDATES IN PIPELINE ── -->
@@ -343,19 +357,8 @@ const JobDetailPage = (() => {
             ? `<div class="empty" style="padding:20px 0">
                  <p>No candidates have applied to this job yet.</p>
                </div>`
-            : `<!-- Clickable candidate name chips -->
-               <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:0">
-                 ${pageState.allCandidates.map(c => `
-                   <button class="btn btn-secondary cand-chip"
-                           data-cand="${c.id}"
-                           data-source="pipeline"
-                           style="font-size:12px;padding:8px 14px;text-align:left">
-                     <strong>${escapeHtml(c.name)}</strong>
-                     <span style="display:block;font-size:10px;color:var(--text-muted);margin-top:2px">
-                       ${escapeHtml(c.applicationStatus || c.submittal?.startStatus || 'Submitted')} · ${formatDate(c.applicationDate || c.submittal?.submittalDate)}
-                     </span>
-                   </button>`).join('')}
-               </div>`}
+            : `<div id="assignedCandList" style="margin-top:12px"></div>
+               <div id="assignedCandPager" style="display:flex;justify-content:center;align-items:center;gap:12px;margin-top:14px"></div>`}
         </div>
 
         <!-- ── AI ENGAGED ── -->
@@ -387,6 +390,14 @@ const JobDetailPage = (() => {
     document.getElementById('backToJobs')
       .onclick = () => navigate('/jobs');
 
+    const jdToggle = document.getElementById('jdCardToggle');
+    if (jdToggle) {
+      jdToggle.onclick = () => {
+        const body = document.getElementById('jdCardBody');
+        const collapsed = body.classList.toggle('jd-collapsed');
+        jdToggle.textContent = collapsed ? '⤢ Maximize' : '⤡ Minimize';
+      };
+    }
     document.getElementById('viewPostingBtn')
       .onclick = () => openPostingModal(pageState.job);
 
@@ -402,24 +413,58 @@ const JobDetailPage = (() => {
       renderSplitView(document.getElementById('content') || document.querySelector('.content'));
     };
 
-    // ── Candidate chip click → split view ──
-    document.querySelectorAll('.cand-chip').forEach(btn => {
-      btn.onclick = async () => {
-        pageState.selectedCandId = btn.dataset.cand;
-        pageState.selectedCandSource = btn.dataset.source || 'pipeline';
-        await hydrateSelectedCandidate(btn.dataset.cand);
-        renderSplitView(document.querySelector('.content'));
-      };
-    });
+    // ── Assigned candidates: 2-column list, 20 per page, with search ──
+    const CAND_PAGE_SIZE = 20;
+    let candPage = 0;
+    let candQuery = '';
+    const renderAssignedCandidates = () => {
+      const listEl = document.getElementById('assignedCandList');
+      const pagerEl = document.getElementById('assignedCandPager');
+      if (!listEl) return;
+      const rows = pageState.allCandidates.filter(c =>
+        !candQuery || `${c.name} ${c.applicationStatus || ''} ${c.submittal?.startStatus || ''}`.toLowerCase().includes(candQuery));
+      const pages = Math.max(1, Math.ceil(rows.length / CAND_PAGE_SIZE));
+      candPage = Math.min(candPage, pages - 1);
+      const slice = rows.slice(candPage * CAND_PAGE_SIZE, (candPage + 1) * CAND_PAGE_SIZE);
 
-    // ── Assigned candidate search ──
+      listEl.innerHTML = slice.length ? `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 24px">
+          ${slice.map(c => `
+            <button class="btn btn-secondary cand-chip" data-cand="${c.id}" data-source="pipeline"
+                    style="font-size:12px;padding:10px 14px;text-align:left;width:100%">
+              <strong>${escapeHtml(c.name)}</strong>
+              <span style="display:block;font-size:10px;color:var(--text-muted);margin-top:2px">
+                ${escapeHtml(c.applicationStatus || c.submittal?.startStatus || 'Submitted')} · ${formatDate(c.applicationDate || c.submittal?.submittalDate)}
+              </span>
+            </button>`).join('')}
+        </div>` : '<div class="empty" style="padding:12px 0"><p>No candidates match.</p></div>';
+
+      pagerEl.innerHTML = rows.length > CAND_PAGE_SIZE ? `
+        <button class="btn btn-sm btn-secondary" id="candPrev" ${candPage === 0 ? 'disabled' : ''}>← Previous</button>
+        <span style="font-size:12px;color:var(--text-muted)">Page ${candPage + 1} of ${pages}</span>
+        <button class="btn btn-sm btn-secondary" id="candNext" ${candPage >= pages - 1 ? 'disabled' : ''}>Next →</button>` : '';
+      const prev = document.getElementById('candPrev');
+      const next = document.getElementById('candNext');
+      if (prev) prev.onclick = () => { candPage--; renderAssignedCandidates(); };
+      if (next) next.onclick = () => { candPage++; renderAssignedCandidates(); };
+
+      listEl.querySelectorAll('.cand-chip').forEach(btn => {
+        btn.onclick = async () => {
+          pageState.selectedCandId = btn.dataset.cand;
+          pageState.selectedCandSource = btn.dataset.source || 'pipeline';
+          await hydrateSelectedCandidate(btn.dataset.cand);
+          renderSplitView(document.querySelector('.content'));
+        };
+      });
+    };
+    renderAssignedCandidates();
+
     const candidateSearch = document.getElementById('jobCandidateSearch');
     if (candidateSearch) {
       candidateSearch.oninput = () => {
-        const q = candidateSearch.value.trim().toLowerCase();
-        document.querySelectorAll('.cand-chip').forEach(btn => {
-          btn.style.display = !q || btn.textContent.toLowerCase().includes(q) ? '' : 'none';
-        });
+        candQuery = candidateSearch.value.trim().toLowerCase();
+        candPage = 0;
+        renderAssignedCandidates();
       };
     }
 
@@ -480,8 +525,9 @@ const JobDetailPage = (() => {
                   data-cand="${c.id}"
                   data-ai-category="${c.aiCategory || 'Applicant'}"
                   style="font-size:12px;padding:6px 14px;
-                         border-color:var(--primary);color:var(--primary)">
-            🤖 ${c.name}
+                         border-color:var(--primary);color:var(--primary);
+                         ${c.band ? `border-left:4px solid ${({green:'#16a34a',red:'#dc2626',orange:'#f97316'})[c.band]};` : ''}">
+            🤖 ${c.name}${c.flagged ? ' <span title="Evaluated in both sections" style="color:#f97316">⚠</span>' : ''}${c.responded ? ' <span title="Recruiter note added">✍️</span>' : ''}
             <span class="ai-stage-badge" style="font-size:10px;padding:2px 6px;margin-left:4px">
               ${c.aiStageLabel || c.aiStage || ''}
             </span>

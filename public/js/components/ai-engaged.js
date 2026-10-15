@@ -200,6 +200,29 @@ const AIEngagedComponent = (() => {
        → Click → opens unified candidate profile with
                   AI Engaged heading + View History button
   ----------------------------------------------------------- */
+  const BAND_COLORS = { green: '#16a34a', red: '#dc2626', orange: '#f97316' };
+
+  function fmtWhen(iso) {
+    const d = new Date(iso);
+    return isNaN(d) ? '' : d.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  }
+
+  // Colour band: green = positive, red = negative, orange = in both sections
+  function bandStyle(c) {
+    return c.band ? `border-left:4px solid ${BAND_COLORS[c.band] || 'transparent'};` : '';
+  }
+
+  // Shown once a human dropped a REC_AI note after the AI note
+  function respondedHtml(c) {
+    return c.responded
+      ? `<div style="font-size:11px;color:var(--text-muted);margin-top:6px">
+           <span title="Recruiter note added" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#16a34a;margin-right:4px"></span>✍️ Recruiter note added ${fmtWhen(c.respondedAt)}
+         </div>`
+      : c.overdue
+        ? `<div style="font-size:11px;color:#e53935;margin-top:6px;font-weight:600">⚠️ No recruiter note after 120+ min</div>`
+        : '';
+  }
+
   function aiCandidateCard(c, categoryLabel) {
     const skills = (c.skills || []).slice(0, 4);
     const extraSkills = (c.skills || []).length - 4;
@@ -210,14 +233,17 @@ const AIEngagedComponent = (() => {
     return `
       <div class="ai-cand-item fade-in"
            data-ai-cand="${c.id}"
-           data-ai-category="${c.aiCategory || 'Applicant'}">
+           data-ai-category="${c.aiCategory || 'Applicant'}"
+           style="${bandStyle(c)}${c.overdue ? 'background:rgba(229,57,53,.08);' : ''}">
 
         <!-- Top row: name + stage badge -->
         <div style="display:flex;justify-content:space-between;
                     align-items:flex-start;gap:10px">
           <div style="flex:1">
             <!-- Candidate name -->
-            <div class="cand-name" style="font-size:14px">${c.name}</div>
+            <div class="cand-name" style="font-size:14px">${c.name}
+              ${c.flagged ? '<span title="Evaluated in both Engaged Applicant and Engaged Candidate" style="color:#f97316;font-size:11px;margin-left:6px">⚠ Both sections</span>' : ''}
+            </div>
 
             <!-- Email + location + experience -->
             <div class="cand-meta" style="margin-top:3px">
@@ -250,6 +276,7 @@ const AIEngagedComponent = (() => {
             View full profile →
           </span>
         </div>
+        ${respondedHtml(c)}
 
       </div>`;
   }
@@ -272,6 +299,6 @@ const AIEngagedComponent = (() => {
     return stages[stageKey] || { label: stageKey || 'In Progress' };
   }
 
-  return { render };
+  return { render, bandStyle, respondedHtml };
 
 })();

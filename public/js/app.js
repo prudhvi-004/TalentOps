@@ -160,9 +160,8 @@ async function renderPage() {
       await AdminPage.render(content);
 
     } else if (path === '/tasks') {
-      // Tasks — dummy data for demo
-      renderDummyPage(content, 'Tasks', '✅',
-        'Task management will connect to your workflow system in production.');
+      await loadScript('/js/pages/tasks.js?v=20261014-flat');
+      await TasksPage.render(content);
 
     } else if (path === '/team') {
       renderDummyPage(content, 'Team Assignment', '👫',
