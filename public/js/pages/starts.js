@@ -22,7 +22,7 @@
 
 const StartsPage = (() => {
 
-  let allRecords = [];
+  let table = null;
   let activeRange = 'today';
   let activeCandidateFilter = 'active';
 
@@ -87,72 +87,39 @@ const StartsPage = (() => {
       };
     });
 
-    const result = await ApiService.getStarts();
-    if (!result.success) {
-      document.getElementById('tableWrap').innerHTML = `
-        <div class="empty"><h3>Could not load starts</h3><p>${result.error}</p></div>`;
-      return;
-    }
-
-    allRecords = result.data;
+    // Cursor-paginated: the server filters (range/search) and returns one page
+    // at a time; more rows load as the table footer scrolls into view.
+    table = RecordDetailShared.pagedTable({
+      wrap: document.getElementById('tableWrap'),
+      headHtml: `<tr><th>CANDIDATE</th><th>STATUS</th><th>JOB</th><th>CLIENT</th><th>LOCATION</th></tr>`,
+      rowHtml: r => `
+        <tr>
+          <td><a href="#" data-cand="${r.candidateId}" data-job="${r.jobId}" style="color:var(--primary);font-weight:600;text-decoration:none">${r.candidateName}</a></td>
+          <td><span class="chip ${statusChipClass(r.status)}">${r.status.toUpperCase()}</span></td>
+          <td><a href="#" data-job-link="${r.jobId}" style="color:var(--primary);text-decoration:none">${r.jobTitle}</a></td>
+          <td>${r.client || ''}</td>
+          <td>${r.location || ''}</td>
+        </tr>`,
+      emptyHtml: `<div class="empty"><h3>No starts match your filters</h3></div>`,
+      errorTitle: 'Could not load starts',
+      fetchPage: params => ApiService.getStarts(params),
+    });
     applyFilters();
   }
 
-  function candidateFilterOk(r) {
-    switch (activeCandidateFilter) {
-      case 'active':      return r.status === 'Active';
-      case 'bench':        return r.status === 'Ended';
-      case 'ending30':     return !!r.endingSoon;
-      case 'unapproved':   return !r.approved;
-      default:             return true;
-    }
-  }
-
   function applyFilters() {
-    const search = document.getElementById('searchInput').value.trim().toLowerCase();
-    const filtered = allRecords.filter(r => {
-      const rangeOk = RecordDetailShared.inRange(r.dateRaw, activeRange);
-      const candidateOk = candidateFilterOk(r);
-      const haystack = [r.candidateName, r.jobTitle, r.client, r.location].map(v => String(v || '').toLowerCase());
-      const searchOk = !search || haystack.some(v => v.includes(search));
-      return rangeOk && candidateOk && searchOk;
+    table.load({
+      ...RecordDetailShared.rangeParams(activeRange,
+        document.getElementById('dateFrom')?.value, document.getElementById('dateTo')?.value),
+      q: document.getElementById('searchInput').value.trim(),
+      view: activeCandidateFilter,
     });
-    renderTable(filtered);
   }
 
   function statusChipClass(status) {
     if (status === 'Active') return 'chip-filled';
     if (status === 'Unapproved') return 'chip-medium';
     return 'chip-closed'; // Ended
-  }
-
-  function renderTable(rows) {
-    const wrap = document.getElementById('tableWrap');
-    if (!wrap) return;
-
-    if (rows.length === 0) {
-      wrap.innerHTML = `<div class="empty"><h3>No starts match your filters</h3></div>`;
-      return;
-    }
-
-    wrap.innerHTML = `
-      <table class="data-table">
-        <thead>
-          <tr><th>CANDIDATE</th><th>STATUS</th><th>JOB</th><th>CLIENT</th><th>LOCATION</th></tr>
-        </thead>
-        <tbody>
-          ${rows.map(r => `
-            <tr>
-              <td><a href="#" data-cand="${r.candidateId}" data-job="${r.jobId}" style="color:var(--primary);font-weight:600;text-decoration:none">${r.candidateName}</a></td>
-              <td><span class="chip ${statusChipClass(r.status)}">${r.status.toUpperCase()}</span></td>
-              <td><a href="#" data-job-link="${r.jobId}" style="color:var(--primary);text-decoration:none">${r.jobTitle}</a></td>
-              <td>${r.client || ''}</td>
-              <td>${r.location || ''}</td>
-            </tr>`).join('')}
-        </tbody>
-      </table>`;
-
-    RecordDetailShared.wireRowLinks(wrap);
   }
 
   return { render };

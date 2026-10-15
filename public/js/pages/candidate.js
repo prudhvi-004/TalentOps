@@ -100,7 +100,7 @@ const CandidatesPage = (() => {
     container.innerHTML = `
       <div class="page-header fade-in">
         <div>
-          <div class="page-title">👥 Candidates</div>
+          <div class="page-title">Candidates</div>
           <div class="page-subtitle" id="candPageSub">Loading...</div>
         </div>
       </div>
@@ -122,71 +122,68 @@ const CandidatesPage = (() => {
     const searchInput = document.getElementById('candSearch');
     if (searchInput) searchInput.value = initialSearch;
 
-    // Only candidates submitted by this recruiter (server scopes submittals
-    // to the logged-in recruiter), one row per candidate+job, newest first.
-    const subResult = await ApiService.getSubmittals();
-    if (!subResult.success) {
-      document.getElementById('candGrid').innerHTML =
-        '<div class="empty" style="grid-column:1/-1"><h3>Could not load data</h3></div>';
-      return;
-    }
-    const seen = new Set();
-    const allCandidates = [];
-    const jobsById = new Map();
-    [...subResult.data]
-      .sort((x, y) => new Date(y.dateRaw || 0) - new Date(x.dateRaw || 0))
-      .forEach(s => {
-        const key = `${s.candidateId}|${s.jobId}`;
-        if (seen.has(key)) return;
-        seen.add(key);
-        const job = { id: s.jobId, title: s.jobTitle, client: s.client };
-        jobsById.set(String(s.jobId), job);
-        allCandidates.push({
-          id: s.candidateId, name: s.candidateName, _job: job, _source: 'pipeline',
-          stage: s.stage, submittedOn: s.submittalDate || s.date, type: s.type,
-          email: s.email, phone: s.phone, candidateLocation: s.candidateLocation,
-          currentTitle: s.currentTitle, currentCompany: s.currentCompany,
-          interviewDate: s.interviewDate, startDate: s.startDate, jobLocation: s.location,
-        });
-      });
-    const allJobs = [...jobsById.values()];
+    // Cursor-paginated: one row per submitted candidate+job (this recruiter's
+    // submittals, newest first). The server applies search / job filter and
+    // returns a page at a time; more tiles load as the footer scrolls into view.
+    const pager = ApiService.createPager(params => ApiService.getCandidates(params));
+    const more = document.createElement('div');
+    container.appendChild(more);
+    let loaded = [];
+    let jobsFilled = false;
 
-    document.getElementById('candPageSub').textContent =
-      `${allCandidates.length} submitted candidates across ${allJobs.length} jobs`;
-
-    // Populate job filter dropdown
-    const jobFilter = document.getElementById('candJobFilter');
-    allJobs.forEach(j => {
-      const opt = document.createElement('option');
-      opt.value = j.id;
-      opt.textContent = j.title;
-      jobFilter.appendChild(opt);
+    // Server row -> the tile shape the renderers below use.
+    const toTile = r => ({
+      id: r.id, name: r.name, _source: 'pipeline',
+      _job: { id: r.jobId, title: r.jobTitle, client: r.client },
+      stage: r.stage, submittedOn: r.submittedOn, type: r.type,
+      email: r.email, phone: r.phone, candidateLocation: r.candidateLocation,
+      currentTitle: r.currentTitle, currentCompany: r.currentCompany,
+      interviewDate: r.interviewDate, startDate: r.startDate, jobLocation: r.jobLocation,
     });
 
     scrollContainer = container;
     container.onscroll = handleScroll;
 
-    // Render tiles
-    function applyFilters() {
-      const search = document.getElementById('candSearch').value.trim().toLowerCase();
-      const jobFilter = document.getElementById('candJobFilter').value;
-
-      const filtered = allCandidates.filter(c => {
-        const haystack = [
-          c.id, c.name, c.email, c.title, c.company, c.location,
-          c.city, c.state, c._job?.id, c._job?.atsId, c._job?.title, c._job?.client,
-          ...(c.skills || []),
-        ].map(v => String(v || '').toLowerCase());
-        return (!search || haystack.some(v => v.includes(search))) &&
-               (!jobFilter || String(c._job?.id) === String(jobFilter));
+    const showPage = (page, append) => {
+      const grid = document.getElementById('candGrid');
+      if (!grid) return; // navigated away
+      if (!page.success) {
+        grid.innerHTML = '<div class="empty" style="grid-column:1/-1"><h3>Could not load data</h3></div>';
+        return;
+      }
+      // Job dropdown options arrive with the first page of the first load.
+      if (!jobsFilled && page.meta) {
+        jobsFilled = true;
+        const jobFilter = document.getElementById('candJobFilter');
+        page.meta.jobs.forEach(j => {
+          const opt = document.createElement('option');
+          opt.value = j.id;
+          opt.textContent = j.title;
+          jobFilter.appendChild(opt);
+        });
+      }
+      loaded = append ? loaded.concat(page.rows.map(toTile)) : page.rows.map(toTile);
+      currentFiltered = loaded;
+      document.getElementById('candPageSub').textContent =
+        `${page.pageInfo.total} submitted candidates`;
+      renderView();
+      LoadMore.attach(more, {
+        shown: loaded.length, total: page.pageInfo.total, hasMore: pager.hasMore,
+        onMore: async () => { const next = await pager.next(); if (next) showPage(next, true); },
       });
-      currentFiltered = filtered;
+    };
+
+    async function applyFilters() {
       viewMode = 'grid';
       scrollThresholdPx = null;
-      renderView();
+      const page = await pager.reset({
+        q: document.getElementById('candSearch').value.trim(),
+        jobId: document.getElementById('candJobFilter').value,
+      });
+      if (page) showPage(page, false);
     }
 
-    document.getElementById('candSearch').oninput   = applyFilters;
+    document.getElementById('candSearch').oninput   = LoadMore.debounce(applyFilters, 250);
     document.getElementById('candJobFilter').onchange = applyFilters;
 
     applyFilters();
@@ -224,7 +221,7 @@ const CandidatesPage = (() => {
 
         <div class="tile-header">
           <div class="tile-title">
-            ${isAI ? '🤖 ' : ''}${c.name}
+            ${isAI ? '' : ''}${c.name}
           </div>
           ${isAI
             ? `<span class="ai-stage-badge" style="font-size:10px">AI</span>`
@@ -236,9 +233,9 @@ const CandidatesPage = (() => {
         </div>
 
         ${c.currentTitle || c.currentCompany
-          ? `<div style="margin-top:6px;font-size:12px">💼 ${[c.currentTitle, c.currentCompany].filter(Boolean).join(' @ ')}</div>` : ''}
+          ? `<div style="margin-top:6px;font-size:12px">${[c.currentTitle, c.currentCompany].filter(Boolean).join(' @ ')}</div>` : ''}
         <div style="margin-top:6px;font-size:12px;color:var(--text-muted)">
-          📍 ${c.candidateLocation || c.jobLocation || '—'}
+          ${c.candidateLocation || c.jobLocation || '—'}
         </div>
 
         <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
@@ -249,9 +246,9 @@ const CandidatesPage = (() => {
         <div class="tile-meta" style="flex-wrap:wrap;gap:4px 12px">
           <span>${c.email || ''}</span>
           <span>${c.phone || ''}</span>
-          <span>📅 Submitted ${c.submittedOn || '—'}</span>
-          ${c.interviewDate ? `<span>🗣 Interview ${c.interviewDate}</span>` : ''}
-          ${c.startDate ? `<span>🚀 Start ${c.startDate}</span>` : ''}
+          <span>Submitted ${c.submittedOn || '—'}</span>
+          ${c.interviewDate ? `<span>Interview ${c.interviewDate}</span>` : ''}
+          ${c.startDate ? `<span>Start ${c.startDate}</span>` : ''}
         </div>
 
       </div>`;

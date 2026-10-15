@@ -78,7 +78,7 @@ const AIEngagedComponent = (() => {
         <div id="aiCandList">
           <div class="loading-screen" style="height:80px">
             <div class="loading-spinner"></div>
-            <p>Loading AI Engaged candidates...</p>
+            <p>Loading Sense AI candidates...</p>
           </div>
         </div>
 
@@ -117,7 +117,7 @@ const AIEngagedComponent = (() => {
     if (!result.success) {
       listContainer.innerHTML = `
         <div class="empty" style="padding:20px 0">
-          <h3>Could not load AI Engaged candidates</h3>
+          <h3>Could not load Sense AI candidates</h3>
           <p style="font-size:12px;color:var(--text-muted)">${result.error}</p>
         </div>`;
       return;
@@ -159,10 +159,10 @@ const AIEngagedComponent = (() => {
           ${countText}
         </div>
         <div class="empty" style="padding:24px 0">
-          <div style="font-size:32px;margin-bottom:8px">🤖</div>
+          <div style="font-size:32px;margin-bottom:8px"></div>
           <h3>No ${categoryLabel}s</h3>
           <p style="font-size:12px">
-            AI Engaged ${categoryLabel}s for this job will appear here
+            Sense AI ${categoryLabel}s for this job will appear here
             when their ATS record UDF matches this JobID.
           </p>
         </div>`;
@@ -216,10 +216,10 @@ const AIEngagedComponent = (() => {
   function respondedHtml(c) {
     return c.responded
       ? `<div style="font-size:11px;color:var(--text-muted);margin-top:6px">
-           <span title="Recruiter note added" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#16a34a;margin-right:4px"></span>✍️ Recruiter note added ${fmtWhen(c.respondedAt)}
+           <span title="Recruiter note added" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#16a34a;margin-right:4px"></span>Recruiter note added ${fmtWhen(c.respondedAt)}
          </div>`
       : c.overdue
-        ? `<div style="font-size:11px;color:#e53935;margin-top:6px;font-weight:600">⚠️ No recruiter note after 120+ min</div>`
+        ? `<div style="font-size:11px;color:#e53935;margin-top:6px;font-weight:600">No recruiter note after 120+ min</div>`
         : '';
   }
 
@@ -247,8 +247,8 @@ const AIEngagedComponent = (() => {
 
             <!-- Email + location + experience -->
             <div class="cand-meta" style="margin-top:3px">
-              📧 ${c.email || '—'} ·
-              📍 ${c.city || c.location || '—'}, ${c.state || ''}
+              ${c.email || '—'} ·
+              ${c.city || c.location || '—'}, ${c.state || ''}
               ${c.experience ? `· ${c.experience}y exp` : ''}
             </div>
 
@@ -270,7 +270,7 @@ const AIEngagedComponent = (() => {
                     border-top:1px solid var(--border);
                     display:flex;align-items:center;gap:8px">
           <span class="ai-stage-badge">
-            🤖 ${c.aiStageLabel || stageInfo.label}
+            ${c.aiStageLabel || stageInfo.label}
           </span>
           <span style="font-size:11px;color:var(--primary)">
             View full profile →

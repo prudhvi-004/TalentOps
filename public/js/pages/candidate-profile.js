@@ -41,7 +41,7 @@ const CandidateProfilePage = (() => {
           <div class="resume-item" data-resume-id="${escapeHtml(r.id)}">
             <div>
               <div style="font-weight:600;font-size:13px">
-                ${i === 0 ? '⭐ ' : ''}Resume ${i + 1}
+                ${i === 0 ? '' : ''}Resume ${i + 1}
               </div>
               <div style="font-size:11px;color:var(--text-muted);margin-top:3px">
                 ID: ${escapeHtml(r.id || '—')} · Updated: ${formatDate(r.updatedAt)}
@@ -190,7 +190,7 @@ const CandidateProfilePage = (() => {
     return `<div class="attachment-list">
       ${attachments.map(a => `
         <div class="attachment-item">
-          <span>📎 ${escapeHtml(a.FILENAME || a.filename || a.NAME || a.name || 'Attachment')}</span>
+          <span>${escapeHtml(a.FILENAME || a.filename || a.NAME || a.name || 'Attachment')}</span>
           ${a.DESCRIPTION || a.description ? `<span style="font-size:11px;color:var(--text-muted)">${escapeHtml(a.DESCRIPTION || a.description)}</span>` : ''}
         </div>
       `).join('')}
@@ -207,8 +207,8 @@ const CandidateProfilePage = (() => {
     const params = new URLSearchParams(window.location.search);
     const aiCategory = params.get('aiCategory') || 'Applicant';
     const heading = source === 'ai'
-      ? (aiCategory === 'Candidate' ? '🤖 AI Engaged Candidate' : '🤖 AI Engaged Applicant')
-      : '👤 Candidate Profile';
+      ? (aiCategory === 'Candidate' ? 'Sense AI Candidate' : 'Sense AI Applicant')
+      : 'Candidate Profile';
     const backPath = jobId ? `/jobs/${jobId}` : '/jobs';
 
     const result = await ApiService.getCandidateById(candidateId);
@@ -241,15 +241,15 @@ const CandidateProfilePage = (() => {
             </div>
           </div>
           <div class="page-actions">
-            ${source === 'ai' ? `<button class="btn btn-secondary" id="viewHistoryBtn">🕐 View History</button>` : ''}
-            <button class="btn btn-primary" id="openNoteBtn">📝 Write Note</button>
+            ${source === 'ai' ? `<button class="btn btn-secondary" id="viewHistoryBtn">View History</button>` : ''}
+            <button class="btn btn-primary" id="openNoteBtn">Write Note</button>
           </div>
         </div>
 
         <div style="display:grid;grid-template-columns:minmax(0,1fr) 420px;gap:16px">
           <div>
             <div class="detail-card">
-              <h3>👤 Candidate Information</h3>
+              <h3>Candidate Information</h3>
               ${[
                 ['Candidate ID', c.id],
                 ['Full Name', c.name],
@@ -267,13 +267,13 @@ const CandidateProfilePage = (() => {
                 <div class="detail-row"><span class="detail-label">${label}</span><span>${escapeHtml(Array.isArray(value) ? value.join(', ') : value)}</span></div>
               ` : '').join('')}
               ${source === 'ai' ? `
-                <div class="detail-row"><span class="detail-label">AI Stage</span><span><span class="ai-stage-badge">🤖 ${escapeHtml(c.aiStageLabel || c.aiStage || '—')}</span></span></div>
+                <div class="detail-row"><span class="detail-label">AI Stage</span><span><span class="ai-stage-badge">${escapeHtml(c.aiStageLabel || c.aiStage || '—')}</span></span></div>
               ` : ''}
             </div>
 
             ${latestSubmission && (latestSubmission.submittalDate || latestSubmission.hiringManager || latestSubmission.startStatus || latestSubmission.recruiterName) ? `
             <div class="detail-card">
-              <h3>📌 Job Submission</h3>
+              <h3>Job Submission</h3>
               <div class="detail-row"><span class="detail-label">Job ID</span><span>${escapeHtml(latestSubmission.jobId || jobId || '—')}</span></div>
               <div class="detail-row"><span class="detail-label">Submittal Date</span><span>${formatDate(latestSubmission.submittalDate)}</span></div>
               <div class="detail-row"><span class="detail-label">Recruiter</span><span>${escapeHtml(latestSubmission.recruiterName || '—')}</span></div>
@@ -286,41 +286,41 @@ const CandidateProfilePage = (() => {
             </div>` : ''}
 
             <div class="detail-card">
-              <h3>💰 Compensation</h3>
+              <h3>Compensation</h3>
               <div class="detail-row"><span class="detail-label">Current Salary</span><span>${escapeHtml(salary.current || '—')} ${escapeHtml(salary.currentPer || '')}</span></div>
               <div class="detail-row"><span class="detail-label">Preferred Minimum</span><span>${escapeHtml(salary.preferredMinimum || '—')} ${escapeHtml(salary.preferredPer || '')}</span></div>
             </div>
 
-            ${c.profile ? `<div class="detail-card"><h3>📝 Profile</h3><p style="font-size:13px;line-height:1.7;white-space:pre-wrap">${escapeHtml(c.profile)}</p></div>` : ''}
+            ${c.profile ? `<div class="detail-card"><h3>Profile</h3><p style="font-size:13px;line-height:1.7;white-space:pre-wrap">${escapeHtml(c.profile)}</p></div>` : ''}
 
-            ${c.skills?.length ? `<div class="detail-card"><h3>🛠 Skills</h3><div>${c.skills.map(s => `<span class="tile-tag">${escapeHtml(s)}</span>`).join('')}</div></div>` : ''}
+            ${c.skills?.length ? `<div class="detail-card"><h3>Skills</h3><div>${c.skills.map(s => `<span class="tile-tag">${escapeHtml(s)}</span>`).join('')}</div></div>` : ''}
 
             ${(c.education || c.certifications?.length) ? `
               <div class="detail-card">
-                <h3>🎓 Education & Certifications</h3>
+                <h3>Education & Certifications</h3>
                 ${c.education ? `<div class="detail-row"><span class="detail-label">Education</span><span>${escapeHtml(c.education)}</span></div>` : ''}
                 ${c.certifications?.length ? `<div class="detail-row"><span class="detail-label">Certifications</span><span>${c.certifications.map(x => `<span class="tile-tag">${escapeHtml(x)}</span>`).join('')}</span></div>` : ''}
               </div>` : ''}
 
             ${Object.values(social).some(Boolean) ? `
               <div class="detail-card">
-                <h3>🔗 Online Profiles</h3>
+                <h3>Online Profiles</h3>
                 ${Object.entries(social).filter(([,v]) => v).map(([k,v]) => `<div class="detail-row"><span class="detail-label">${escapeHtml(k)}</span><span>${escapeHtml(v)}</span></div>`).join('')}
               </div>` : ''}
 
             <div class="detail-card">
-              <h3>📄 Resumes <span style="font-weight:400;font-size:12px;color:var(--text-muted)">(${(c.resumes || []).length})</span></h3>
+              <h3>Resumes <span style="font-weight:400;font-size:12px;color:var(--text-muted)">(${(c.resumes || []).length})</span></h3>
               ${renderResumeList(c)}
             </div>
 
             <div class="detail-card">
-              <h3>📎 Attachments</h3>
+              <h3>Attachments</h3>
               ${renderAttachments(c)}
             </div>
 
             <div class="detail-card candidate-notes-card">
               <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
-                <h3 style="margin:0">🗒 JobDiva Notes <span id="candidateNotesCount" style="font-weight:400;font-size:12px;color:var(--text-muted)">(${normaliseNotes(c.notes).length})</span></h3>
+                <h3 style="margin:0">JobDiva Notes <span id="candidateNotesCount" style="font-weight:400;font-size:12px;color:var(--text-muted)">(${normaliseNotes(c.notes).length})</span></h3>
                 ${normaliseNotes(c.notes).length ? `<input id="candidateNotesSearch" placeholder="Search notes..." style="min-width:220px;padding:6px 10px;font-size:12px"/>` : ''}
               </div>
               <div id="candidateNotesList" class="candidate-notes-container" aria-live="polite"></div>
@@ -329,7 +329,7 @@ const CandidateProfilePage = (() => {
 
           <div>
             <div class="detail-card" style="position:sticky;top:16px">
-              <h3>📝 Write Note to ATS</h3>
+              <h3>Write Note to ATS</h3>
               <p style="font-size:12px;color:var(--text-muted);line-height:1.5;margin:0">Use the <strong>Write Note</strong> button above to open the JobDiva note form.</p>
             </div>
           </div>
@@ -359,7 +359,7 @@ const CandidateProfilePage = (() => {
 
     document.getElementById('openNoteBtn').onclick = () => {
       window.openModal(
-        `📝 Write Note — ${escapeHtml(c.name)}`,
+        `Write Note — ${escapeHtml(c.name)}`,
         '<div id="noteModalContainer"></div>',
         '<button class="btn btn-secondary" onclick="closeModal()">Close</button>'
       );
@@ -393,7 +393,7 @@ const CandidateProfilePage = (() => {
         const viewer = document.getElementById('resumeViewer');
         if (!viewer || !resume) return;
         viewer.innerHTML = resume.text
-          ? `<pre style="white-space:pre-wrap;font-family:'Courier New',monospace;font-size:12px;background:var(--surface-2);padding:14px;border-radius:8px;line-height:1.6;max-height:700px;overflow:auto">${escapeHtml(resume.text)}</pre>`
+          ? `<div style="max-height:700px;overflow:auto">${ResumeFormat.toHtml(resume.text)}</div>`
           : '<p style="color:var(--text-muted);font-size:12px">No text was returned for this resume.</p>';
       };
     });
@@ -403,7 +403,7 @@ const CandidateProfilePage = (() => {
   function openHistoryModal(c) {
     const history = c.aiHistory || [];
     const bodyHTML = `
-      <div style="margin-bottom:12px"><span class="ai-stage-badge">🤖 Current Stage: ${escapeHtml(c.aiStageLabel || c.aiStage || 'Unknown')}</span></div>
+      <div style="margin-bottom:12px"><span class="ai-stage-badge">Current Stage: ${escapeHtml(c.aiStageLabel || c.aiStage || 'Unknown')}</span></div>
       ${history.length === 0
         ? '<p style="color:var(--text-muted)">No history available.</p>'
         : history.map(h => `
@@ -413,7 +413,7 @@ const CandidateProfilePage = (() => {
           </div>`).join('')}`;
 
     window.openModal(
-      `🕐 AI History — ${escapeHtml(c.name)}`,
+      `AI History — ${escapeHtml(c.name)}`,
       bodyHTML,
       `<button class="btn btn-secondary" onclick="closeModal()">Close</button>`
     );

@@ -13,7 +13,7 @@
 
 const MyPrimaryJobsPage = (() => {
 
-  let allRecords = [];
+  let table = null;
   let activeRange = 'today';
 
   async function render(container) {
@@ -58,58 +58,35 @@ const MyPrimaryJobsPage = (() => {
 
     RecordDetailShared.wireCommonControls(container, () => activeRange, (v) => activeRange = v, applyFilters);
 
-    const result = await ApiService.getMyPrimaryJobRecords();
-    if (!result.success) {
-      document.getElementById('tableWrap').innerHTML = `
-        <div class="empty"><h3>Could not load records</h3><p>${result.error}</p></div>`;
-      return;
-    }
-
-    allRecords = result.data;
+    // Cursor-paginated: the server filters (range/search) and returns one page
+    // at a time; more rows load as the table footer scrolls into view.
+    table = RecordDetailShared.pagedTable({
+      wrap: document.getElementById('tableWrap'),
+      headHtml: `<tr><th>DATE</th><th>CANDIDATE</th><th>JOB</th><th>CLIENT</th><th>NOTES</th></tr>`,
+      rowHtml: r => `
+        <tr>
+          <td>${r.date || ''}</td>
+          <td><a href="#" data-cand="${r.candidateId}" data-job="${r.jobId}" style="color:var(--primary);font-weight:600;text-decoration:none">${r.candidateName}</a></td>
+          <td><a href="#" data-job-link="${r.jobId}" style="color:var(--primary);text-decoration:none">${r.jobTitle}</a></td>
+          <td>${r.client || ''}</td>
+          <td>${r.notes || ''}</td>
+        </tr>`,
+      emptyHtml: `<div class="empty"><h3>No records match your filters</h3></div>
+        <p style="color:var(--text-muted);font-size:12px;margin-top:8px">
+          No submittals found on jobs where you are the primary recruiter, for this range.
+        </p>`,
+      errorTitle: 'Could not load records',
+      fetchPage: params => ApiService.getMyPrimaryJobRecords(params),
+    });
     applyFilters();
   }
 
   function applyFilters() {
-    const search = document.getElementById('searchInput').value.trim().toLowerCase();
-    const filtered = allRecords.filter(r => {
-      const rangeOk = RecordDetailShared.inRange(r.dateRaw, activeRange);
-      const haystack = [r.candidateName, r.jobTitle, r.client].map(v => String(v || '').toLowerCase());
-      const searchOk = !search || haystack.some(v => v.includes(search));
-      return rangeOk && searchOk;
+    table.load({
+      ...RecordDetailShared.rangeParams(activeRange,
+        document.getElementById('dateFrom')?.value, document.getElementById('dateTo')?.value),
+      q: document.getElementById('searchInput').value.trim(),
     });
-    renderTable(filtered);
-  }
-
-  function renderTable(rows) {
-    const wrap = document.getElementById('tableWrap');
-    if (!wrap) return;
-
-    if (rows.length === 0) {
-      wrap.innerHTML = `<div class="empty"><h3>No records match your filters</h3></div>
-        <p style="color:var(--text-muted);font-size:12px;margin-top:8px">
-          No submittals found on jobs where you are the primary recruiter, for this range.
-        </p>`;
-      return;
-    }
-
-    wrap.innerHTML = `
-      <table class="data-table">
-        <thead>
-          <tr><th>DATE</th><th>CANDIDATE</th><th>JOB</th><th>CLIENT</th><th>NOTES</th></tr>
-        </thead>
-        <tbody>
-          ${rows.map(r => `
-            <tr>
-              <td>${r.date || ''}</td>
-              <td><a href="#" data-cand="${r.candidateId}" data-job="${r.jobId}" style="color:var(--primary);font-weight:600;text-decoration:none">${r.candidateName}</a></td>
-              <td><a href="#" data-job-link="${r.jobId}" style="color:var(--primary);text-decoration:none">${r.jobTitle}</a></td>
-              <td>${r.client || ''}</td>
-              <td>${r.notes || ''}</td>
-            </tr>`).join('')}
-        </tbody>
-      </table>`;
-
-    RecordDetailShared.wireRowLinks(wrap);
   }
 
   return { render };

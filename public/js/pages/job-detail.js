@@ -186,14 +186,19 @@ const JobDetailPage = (() => {
     }
     pageState.job = jobResult.data;
 
-    // Fetch candidates (pipeline + AI) in parallel
+    // Fetch candidates (pipeline + AI) in parallel — first cursor page only, so
+    // the job opens as soon as ~50 rows per list are back. The remaining pages
+    // (if the job has more) stream in behind the scenes.
+    const FIRST_PAGE = 50;
     const [candResult, aiResult] = await Promise.all([
-      ApiService.getCandidatesForJob(jobId),
-      ApiService.getAIEngagedForJob(jobId),
+      ApiService.getCandidatesForJob(jobId, { limit: FIRST_PAGE }),
+      ApiService.getAIEngagedForJob(jobId, { limit: FIRST_PAGE }),
     ]);
 
     if (candResult.success) pageState.allCandidates = candResult.data;
-    if (aiResult.success)   pageState.aiEngaged     = aiResult.data;
+    if (aiResult.success)   pageState.aiEngaged     = groupAIEngaged(aiResult.data);
+    const moreCandidates = candResult.success && candResult.pageInfo.hasMore;
+    const moreAI = aiResult.success && aiResult.pageInfo.hasMore;
     // If coming from Candidates page, open split view immediately
     if (openOpts.openCandId) {
       pageState.selectedCandId = openOpts.openCandId;
@@ -202,6 +207,54 @@ const JobDetailPage = (() => {
       await hydrateSelectedCandidate(openOpts.openCandId);
       renderSplitView(container);
     } else {
+      renderDefault(container);
+    }
+
+    if (moreCandidates || moreAI) {
+      loadRemainingPages(container, jobId, {
+        candidates: moreCandidates ? candResult.pageInfo.nextCursor : null,
+        ai: moreAI ? aiResult.pageInfo.nextCursor : null,
+        candidatesFirst: candResult.data,
+        aiFirst: aiResult.data,
+      });
+    }
+  }
+
+  // The paged AI-engaged endpoint returns one flat list tagged with `_group`.
+  function groupAIEngaged(rows) {
+    return {
+      applicants: rows.filter(c => c._group === 'applicant'),
+      candidates: rows.filter(c => c._group === 'candidate'),
+    };
+  }
+
+  // Follows the remaining cursors in the background, merges them into
+  // pageState (so compare / split-view lookups see every candidate) and
+  // refreshes the default view once, only if the user is still on it.
+  async function loadRemainingPages(container, jobId, { candidates, ai }) {
+    const state = pageState; // a later render() swaps pageState; never write into that one
+    const drain = async (fetchPage, cursor, onRows) => {
+      while (cursor) {
+        const res = await fetchPage({ limit: 200, cursor });
+        if (!res.success) return;
+        onRows(res.data);
+        cursor = res.pageInfo.hasMore ? res.pageInfo.nextCursor : null;
+      }
+    };
+    await Promise.all([
+      drain(p => ApiService.getCandidatesForJob(jobId, p), candidates, rows => {
+        state.allCandidates = state.allCandidates.concat(rows);
+      }),
+      drain(p => ApiService.getAIEngagedForJob(jobId, p), ai, rows => {
+        const grouped = groupAIEngaged(rows);
+        state.aiEngaged = {
+          applicants: state.aiEngaged.applicants.concat(grouped.applicants),
+          candidates: state.aiEngaged.candidates.concat(grouped.candidates),
+        };
+      }),
+    ]);
+    // Still the same job, still in the default (non-split) view → show the rest.
+    if (pageState === state && state.mode === 'default' && container.isConnected) {
       renderDefault(container);
     }
   }
@@ -231,20 +284,20 @@ const JobDetailPage = (() => {
               </span>
             </div>
             <div class="page-subtitle">
-              🏢 ${j.client} · 📍 ${j.location} ·
+              ${j.client} · ${j.location} ·
               <span class="chip chip-${j.status}">${j.status}</span>
             </div>
           </div>
           <div class="page-actions">
-            <button class="btn btn-secondary" id="viewPostingBtn">📄 View Original Posting</button>
-            <button class="btn btn-secondary" id="jobActivityBtn">🕐 Job Activity</button>
-            <button class="btn btn-secondary" id="compareCandBtn">🔀 Compare Candidates</button>
+            <button class="btn btn-secondary" id="viewPostingBtn">View Original Posting</button>
+            <button class="btn btn-secondary" id="jobActivityBtn">Job Activity</button>
+            <button class="btn btn-secondary" id="compareCandBtn">Compare Candidates</button>
           </div>
         </div>
 
         <!-- ── JOB INFO CARD ── -->
         <div class="detail-card">
-          <h3>ℹ️ Job Info</h3>
+          <h3>Job Info</h3>
           <div class="job-info-grid">
           <div class="detail-row">
             <span class="detail-label">Hiring Manager</span>
@@ -304,7 +357,7 @@ const JobDetailPage = (() => {
         <!-- ── JOB DESCRIPTION CARD ── -->
         <div class="detail-card">
           <h3 style="display:flex;justify-content:space-between;align-items:center">
-            <span>📋 Job Description</span>
+            <span>Job Description</span>
             <button class="btn btn-sm btn-secondary" id="jdCardToggle" type="button">⤢ Maximize</button>
           </h3>
           <div id="jdCardBody" class="jd-collapsed">
@@ -343,7 +396,7 @@ const JobDetailPage = (() => {
         <div class="detail-card">
           <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
             <h3 style="margin:0">
-              👥 Assigned Candidates
+              Submitted Candidates
               <span style="font-weight:400;font-size:12px;color:var(--text-muted)">
                 (${pageState.allCandidates.length})
               </span>
@@ -363,7 +416,7 @@ const JobDetailPage = (() => {
 
         <!-- ── AI ENGAGED ── -->
         <div class="detail-card">
-          <h3>🤖 AI Engaged</h3>
+          <h3>Sense AI</h3>
 
           <!-- Sub-tabs: Applicants | Candidates -->
           <div style="display:flex;gap:8px;margin-bottom:14px">
@@ -480,61 +533,88 @@ const JobDetailPage = (() => {
           document.getElementById('aiListDefault'),
           btn.dataset.aiTab
         );
-        applyAISearch();
       };
     });
 
     // Render initial AI list (applicants tab)
+    aiListState.page = 0;
     renderAIListDefault(
       document.getElementById('aiListDefault'),
       'applicant'
     );
   }
 
+  // Sense AI list: 2 columns x 5 rows = 10 per page, paged with prev/next.
+  const AI_PAGE_SIZE = 10;
+  const aiListState = { tab: 'applicant', page: 0 };
+
   function applyAISearch() {
-    const input = document.getElementById('aiCandidateSearch');
-    if (!input) return;
-    const q = input.value.trim().toLowerCase();
-    document.querySelectorAll('.ai-cand-chip').forEach(btn => {
-      btn.style.display = !q || btn.textContent.toLowerCase().includes(q) ? '' : 'none';
-    });
+    aiListState.page = 0;
+    const container = document.getElementById('aiListDefault');
+    if (container) renderAIListDefault(container, aiListState.tab, true);
   }
 
   /* -----------------------------------------------------------
      renderAIListDefault(container, tab)
-     Renders AI engaged candidates in the default view.
-     Clicking one → split view with AI candidate profile.
+     Renders Sense AI candidates in the default view.
+     Clicking one → split view with the candidate profile.
   ----------------------------------------------------------- */
-  function renderAIListDefault(container, tab) {
-    const list = tab === 'applicant'
+  function renderAIListDefault(container, tab, keepPage) {
+    if (aiListState.tab !== tab) aiListState.page = 0;
+    aiListState.tab = tab;
+    if (!keepPage && aiListState.page && !container.dataset.rendered) aiListState.page = 0;
+    container.dataset.rendered = '1';
+
+    const full = tab === 'applicant'
       ? (pageState.aiEngaged.applicants || [])
       : (pageState.aiEngaged.candidates || []);
+    const q = (document.getElementById('aiCandidateSearch')?.value || '').trim().toLowerCase();
+    const list = q
+      ? full.filter(c => `${c.name} ${c.aiStageLabel || c.aiStage || ''}`.toLowerCase().includes(q))
+      : full;
 
     if (list.length === 0) {
       container.innerHTML = `
         <div class="empty" style="padding:16px 0">
-          <p>No AI Engaged ${tab === 'applicant' ? 'Applicants' : 'Candidates'} for this job.</p>
+          <p>${q ? 'No matches.' : `No Sense AI ${tab === 'applicant' ? 'Applicants' : 'Candidates'} for this job.`}</p>
         </div>`;
       return;
     }
 
+    const pages = Math.ceil(list.length / AI_PAGE_SIZE);
+    aiListState.page = Math.min(aiListState.page, pages - 1);
+    const slice = list.slice(aiListState.page * AI_PAGE_SIZE, (aiListState.page + 1) * AI_PAGE_SIZE);
+
     container.innerHTML = `
-      <div style="display:flex;flex-wrap:wrap;gap:8px">
-        ${list.map(c => `
+      <div style="display:grid;grid-template-columns:1fr 1fr;grid-template-rows:repeat(5,auto);
+                  grid-auto-flow:column;gap:8px 24px">
+        ${slice.map(c => `
           <button class="btn btn-secondary ai-cand-chip"
                   data-cand="${c.id}"
                   data-ai-category="${c.aiCategory || 'Applicant'}"
-                  style="font-size:12px;padding:6px 14px;
+                  style="font-size:12px;padding:8px 14px;width:100%;text-align:left;
                          border-color:var(--primary);color:var(--primary);
                          ${c.band ? `border-left:4px solid ${({green:'#16a34a',red:'#dc2626',orange:'#f97316'})[c.band]};` : ''}">
-            🤖 ${c.name}${c.flagged ? ' <span title="Evaluated in both sections" style="color:#f97316">⚠</span>' : ''}${c.responded ? ' <span title="Recruiter note added">✍️</span>' : ''}
+            ${escapeHtml(c.name)}${c.flagged ? ' <span title="Evaluated in both sections" style="color:#f97316">⚠</span>' : ''}${c.responded ? ' <span title="Recruiter note added">✍️</span>' : ''}
             <span class="ai-stage-badge" style="font-size:10px;padding:2px 6px;margin-left:4px">
-              ${c.aiStageLabel || c.aiStage || ''}
+              ${escapeHtml(c.aiStageLabel || c.aiStage || '')}
             </span>
           </button>`).join('')}
-      </div>`;
+      </div>
+      ${pages > 1 ? `
+      <div style="display:flex;justify-content:center;align-items:center;gap:12px;margin-top:14px">
+        <button class="btn btn-sm btn-secondary" id="aiPrev" ${aiListState.page === 0 ? 'disabled' : ''}>←</button>
+        <span style="font-size:12px;color:var(--text-muted)">Page ${aiListState.page + 1} of ${pages} · ${list.length} total</span>
+        <button class="btn btn-sm btn-secondary" id="aiNext" ${aiListState.page >= pages - 1 ? 'disabled' : ''}>→</button>
+      </div>` : ''}`;
 
-    // AI candidate chip click → split view
+    const go = delta => { aiListState.page += delta; renderAIListDefault(container, tab, true); };
+    const prev = container.querySelector('#aiPrev');
+    const next = container.querySelector('#aiNext');
+    if (prev) prev.onclick = () => go(-1);
+    if (next) next.onclick = () => go(1);
+
+    // Sense AI chip click → split view
     container.querySelectorAll('.ai-cand-chip').forEach(btn => {
       btn.onclick = () => {
         pageState.selectedCandId      = btn.dataset.cand;
@@ -574,14 +654,14 @@ const JobDetailPage = (() => {
               </span>
             </div>
             <div class="page-subtitle">
-              🏢 ${j.client} · 📍 ${j.location} ·
+              ${j.client} · ${j.location} ·
               <span class="chip chip-${j.status}">${j.status}</span>
             </div>
           </div>
           <div class="page-actions">
-            <button class="btn btn-secondary" id="viewPostingBtn">📄 View Original Posting</button>
-            <button class="btn btn-secondary" id="jobActivityBtn">🕐 Job Activity</button>
-            <button class="btn btn-secondary" id="exitCompareBtn">🔲 Exit Compare</button>
+            <button class="btn btn-secondary" id="viewPostingBtn">View Original Posting</button>
+            <button class="btn btn-secondary" id="jobActivityBtn">Job Activity</button>
+            <button class="btn btn-secondary" id="exitCompareBtn">Exit Compare</button>
           </div>
         </div>
 
@@ -592,9 +672,9 @@ const JobDetailPage = (() => {
           <!-- LEFT PANEL: Job Description -->
           <div class="split-panel" id="jdPanel">
             <div class="split-header">
-              <span id="jdPanelTitle">📋 Job Description</span>
+              <span id="jdPanelTitle">Job Description</span>
               <button class="btn btn-sm btn-secondary" id="jdToggleBtn">
-                ◀ Minimize
+                Minimize
               </button>
             </div>
             <!-- JD content scrollable -->
@@ -606,27 +686,29 @@ const JobDetailPage = (() => {
           <!-- RIGHT PANEL: Candidate Profile -->
           <div class="split-panel">
             <div class="split-header">
-              <span id="rightPanelTitle">👥 Candidates</span>
+              <span id="rightPanelTitle">Candidates</span>
               <div style="display:flex;gap:6px;align-items:center">
+                <button class="btn btn-sm btn-secondary" id="jdShowBtn" style="display:none">Show Job Description</button>
                 <input id="splitCandidateSearch" placeholder="Search candidates..."
                        style="width:190px;padding:5px 9px;font-size:11px"/>
                 <!-- All Candidates button -->
                 <button class="btn btn-sm btn-secondary" id="allCandsBtn">
-                  📋 All Candidates
+                  All Candidates
                 </button>
               </div>
             </div>
-            <div class="split-body" style="padding:0">
+            <div class="split-body" style="padding:0;display:flex;flex-direction:column;overflow:hidden">
 
-              <!-- Candidate selector chips at top -->
-              <div style="padding:12px 16px;border-bottom:1px solid var(--border);
-                          display:flex;flex-wrap:wrap;gap:6px" id="candChipBar">
+              <!-- Candidate selector chips: single horizontally-scrolling row -->
+              <div style="padding:10px 16px;border-bottom:1px solid var(--border);
+                          display:flex;flex-wrap:nowrap;gap:6px;overflow-x:auto;
+                          overflow-y:hidden;flex:0 0 auto" id="candChipBar">
                 ${renderCandChips()}
               </div>
 
               <!-- Selected candidate profile -->
-              <div style="padding:18px;overflow-y:auto;
-                          height:calc(100% - 58px)" id="candidateProfileArea">
+              <div style="padding:18px;overflow-y:auto;flex:1;min-height:0"
+                   id="candidateProfileArea">
                 ${selectedCand
                   ? renderCandidateCard(selectedCand)
                   : '<div class="empty"><p>Select a candidate above</p></div>'}
@@ -655,7 +737,11 @@ const JobDetailPage = (() => {
 
     // ── JD Minimize / Expand ──
     document.getElementById('jdToggleBtn').onclick = () => {
-      pageState.jdMinimized = !pageState.jdMinimized;
+      pageState.jdMinimized = true;
+      applyJDMinimize();
+    };
+    document.getElementById('jdShowBtn').onclick = () => {
+      pageState.jdMinimized = false;
       applyJDMinimize();
     };
 
@@ -706,66 +792,62 @@ const JobDetailPage = (() => {
      When expanded:  panel returns to full width with content.
   ----------------------------------------------------------- */
   function applyJDMinimize() {
-    const grid    = document.getElementById('splitViewGrid');
-    const body    = document.getElementById('jdPanelBody');
-    const title   = document.getElementById('jdPanelTitle');
-    const toggleBtn = document.getElementById('jdToggleBtn');
+    const grid      = document.getElementById('splitViewGrid');
+    const panel     = document.getElementById('jdPanel');
+    const showBtn   = document.getElementById('jdShowBtn');
+    const minimized = !!pageState.jdMinimized;
 
-    if (pageState.jdMinimized) {
-      // Collapse left panel
-      grid.style.gridTemplateColumns = '44px 1fr';
-      body.style.display    = 'none';
-      title.style.display   = 'none';
-      toggleBtn.textContent = '▶';
-      toggleBtn.title       = 'Expand Job Description';
-    } else {
-      // Restore left panel
-      grid.style.gridTemplateColumns = '1fr 1fr';
-      body.style.display    = '';
-      title.style.display   = '';
-      toggleBtn.textContent = '◀ Minimize';
-      toggleBtn.title       = 'Minimize Job Description';
-    }
+    // Minimized: the job description panel is hidden entirely and the
+    // candidate panel takes the full width; "Show Job Description" brings it back.
+    panel.style.display = minimized ? 'none' : '';
+    grid.style.gridTemplateColumns = minimized ? '1fr' : '1fr 1fr';
+    showBtn.style.display = minimized ? '' : 'none';
   }
 
   /* -----------------------------------------------------------
      renderJDContent(job)
      Renders the job description content for the left panel.
   ----------------------------------------------------------- */
+  function formatPayRange(j) {
+    const min = j.payRateMin || j.requiredPayRangeFrom;
+    const max = j.payRateMax || j.requiredPayRangeTo;
+    const per = j.payRatePer || j.requiredPayRangePer || '';
+    if (!min && !max) return '—';
+    return `${min || ''}${min && max ? ' – ' : ''}${max || ''} ${per}`.trim();
+  }
+
   function renderJDContent(j) {
+    const info = [
+      ['Client', j.client],
+      ['Location', j.location],
+      ['Priority', j.priority || '—'],
+      ['Hiring Mgr', j.hiringManager || '—'],
+      ['Pay Range', formatPayRange(j)],
+      ['Max Submittals', j.maxAllowedSubmittals || '—'],
+    ];
+
     return `
-      <div class="detail-card" style="margin-bottom:12px">
-        <h3>ℹ️ Job Info</h3>
-        <div class="detail-row">
-          <span class="detail-label">Client</span>
-          <span>${j.client}</span>
-        </div>
-        <div class="detail-row">
-          <span class="detail-label">Location</span>
-          <span>${j.location}</span>
-        </div>
-        <div class="detail-row">
-          <span class="detail-label">Priority</span>
-          <span>${j.priority || '—'}</span>
-        </div>
-        <div class="detail-row">
-          <span class="detail-label">Hiring Mgr</span>
-          <span style="font-size:12px">${j.hiringManager || '—'}</span>
+      <div class="detail-card" style="margin-bottom:10px;padding:12px 16px">
+        <h3 style="margin-bottom:8px">Job Info</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 20px;font-size:13px">
+          ${info.map(([k, v]) => `
+            <div>
+              <div style="font-size:10px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.3px">${k}</div>
+              <div style="font-weight:500">${escapeHtml(String(v ?? '—'))}</div>
+            </div>`).join('')}
         </div>
       </div>
 
-      <div class="detail-card">
-        <h3>📋 Description</h3>
-        <p style="font-size:13px;line-height:1.7;margin-bottom:12px">
-          ${j.description || 'No description.'}
-        </p>
+      <div class="detail-card" style="padding:12px 16px">
+        <h3 style="margin-bottom:8px">Description</h3>
+        <div style="font-size:13px;line-height:1.5;white-space:pre-line;margin-bottom:8px">${j.description ? j.description.replace(/\n{3,}/g, '\n\n') : 'No description.'}</div>
         ${j.requirements && j.requirements.length > 0 ? `
-        <div style="margin-top:10px">
+        <div style="margin-top:8px">
           <div style="font-size:11px;font-weight:600;color:var(--text-muted);
-                      text-transform:uppercase;margin-bottom:6px">
+                      text-transform:uppercase;margin-bottom:4px">
             Requirements
           </div>
-          <ul style="margin:0;padding-left:20px;font-size:12px;line-height:1.6">${j.requirements.map(r => `<li>${escapeHtml(r)}</li>`).join('')}</ul>
+          <ul style="margin:0;padding-left:20px;font-size:13px;line-height:1.5">${j.requirements.map(r => `<li>${escapeHtml(r)}</li>`).join('')}</ul>
         </div>` : ''}
       </div>`;
   }
@@ -798,8 +880,8 @@ const JobDetailPage = (() => {
           data-select-cand="${c.id}"
           data-source="${c._source}"
           data-ai-category="${c._aiCategory || 'Applicant'}"
-          style="font-size:12px">
-          ${isAI ? '🤖 ' : ''}${c.name}
+          style="font-size:12px;flex:0 0 auto;white-space:nowrap">
+          ${isAI ? '' : ''}${c.name}
         </button>`;
     }).join('');
   }
@@ -816,9 +898,9 @@ const JobDetailPage = (() => {
     // Determine heading
     const heading = isAI
       ? (pageState.selectedAICategory === 'Candidate'
-          ? '🤖 AI Engaged Candidate'
-          : '🤖 AI Engaged Applicant')
-      : '👤 Candidate Profile';
+          ? 'Sense AI Candidate'
+          : 'Sense AI Applicant')
+      : 'Candidate Profile';
 
     return `
       <div class="fade-in">
@@ -833,12 +915,12 @@ const JobDetailPage = (() => {
             </div>
             <div style="font-size:18px;font-weight:700">${c.name}</div>
             <div class="cand-meta" style="margin-top:4px">
-              📧 ${c.email || '—'} ·
-              📱 ${c.phone || '—'} ·
-              📍 ${c.location || [c.city, c.state].filter(Boolean).join(', ') || '—'}
+              ${c.email || '—'} ·
+              ${c.phone || '—'} ·
+              ${c.location || [c.city, c.state].filter(Boolean).join(', ') || '—'}
             </div>
             <div style="font-size:12px;color:var(--text-muted);margin-top:5px">
-              ${c.title ? `💼 ${c.title}` : ''}${c.company ? ` · 🏢 ${c.company}` : ''}
+              ${c.title ? `${c.title}` : ''}${c.company ? ` · ${c.company}` : ''}
             </div>
             ${c.applicationStatus || c.applicationDate ? `
             <div style="font-size:12px;color:var(--text-muted);margin-top:5px">
@@ -855,7 +937,7 @@ const JobDetailPage = (() => {
                 ? `<span class="chip chip-medium">${c.experience}Y EXP</span>`
                 : ''}
               ${isAI && c.aiStageLabel
-                ? `<span class="ai-stage-badge">🤖 ${c.aiStageLabel}</span>`
+                ? `<span class="ai-stage-badge">${c.aiStageLabel}</span>`
                 : ''}
             </div>
           </div>
@@ -867,19 +949,19 @@ const JobDetailPage = (() => {
                     data-cand-id="${c.id}"
                     data-cand-name="${c.name}"
                     data-job-id="${pageState.job.id}">
-              📝 Notes
+              Notes
             </button>
             <!-- AI Match button -->
             <button class="btn btn-sm btn-secondary" id="aiMatchBtnSplit"
                     data-cand-id="${c.id}"
                     data-cand-name="${c.name}">
-              🤖 AI Match
+              AI Match
             </button>
             <!-- View History — AI candidates only -->
             ${isAI ? `
             <button class="btn btn-sm btn-secondary" id="viewHistoryBtnSplit"
                     data-cand-id="${c.id}">
-              🕐 View History
+              View History
             </button>` : ''}
           </div>
         </div>
@@ -887,21 +969,21 @@ const JobDetailPage = (() => {
         <!-- Profile -->
         ${c.profile ? `
         <div class="detail-card" style="margin-bottom:12px">
-          <h3>👤 Profile</h3>
+          <h3>Profile</h3>
           <p style="font-size:13px;line-height:1.6">${c.profile}</p>
         </div>` : ''}
 
         <!-- Skills -->
         ${c.skills && c.skills.length > 0 ? `
         <div class="detail-card" style="margin-bottom:12px">
-          <h3>🛠 Skills</h3>
+          <h3>Skills</h3>
           ${c.skills.map(s => `<span class="tile-tag">${s}</span>`).join('')}
         </div>` : ''}
 
         <!-- Education -->
         ${c.education ? `
         <div class="detail-card" style="margin-bottom:12px">
-          <h3>🎓 Education</h3>
+          <h3>Education</h3>
           <p style="font-size:13px">${c.education}</p>
           ${c.certifications && c.certifications.length > 0
             ? `<div style="margin-top:8px">
@@ -914,12 +996,12 @@ const JobDetailPage = (() => {
         <!-- Resume -->
         ${c.resume ? `
         <div class="detail-card">
-          <h3>📄 Resume</h3>
-          <pre style="white-space:pre-wrap;font-family:'Courier New',monospace;font-size:12px;background:var(--surface-2);padding:14px;border-radius:8px;line-height:1.6;max-height:520px;overflow:auto">${escapeHtml(c.resume)}</pre>
+          <h3>Resume</h3>
+          ${ResumeFormat.toHtml(c.resume)}
         </div>` : ''}
 
         <div class="detail-card" id="splitNotesCard">
-          <h3>&#x1F5D2; Recent JobDiva Notes <span id="splitNotesCount" style="font-weight:400;font-size:12px;color:var(--text-muted)"></span></h3>
+          <h3>Recent JobDiva Notes <span id="splitNotesCount" style="font-weight:400;font-size:12px;color:var(--text-muted)"></span></h3>
           <div id="splitNotesList" class="candidate-notes-container" aria-live="polite"></div>
         </div>
 
@@ -1038,7 +1120,7 @@ const JobDetailPage = (() => {
       // Open modal with note form inside
       // NoteWritebackComponent renders into the modal body
       window.openModal(
-        `📝 Write Note — ${candName}`,
+        `Write Note — ${candName}`,
         '<div id="noteModalContainer"></div>',
         '' // footer is handled inside the component
       );
@@ -1098,9 +1180,9 @@ const JobDetailPage = (() => {
     btn.onclick = () => {
       const candName = btn.dataset.candName;
       window.openModal(
-        `🤖 AI Match — ${candName}`,
+        `AI Match — ${candName}`,
         `<div style="text-align:center;padding:20px">
-           <div style="font-size:48px;margin-bottom:12px">🤖</div>
+           <div style="font-size:48px;margin-bottom:12px"></div>
            <p style="color:var(--text-muted);font-size:13px">
              AI Match scoring will connect to your AI engine in production.
              <br><br>
@@ -1140,7 +1222,7 @@ const JobDetailPage = (() => {
     const bodyHTML = `
       <div style="margin-bottom:16px">
         <span class="ai-stage-badge">
-          🤖 Current: ${c.aiStageLabel || c.aiStage || 'Unknown'}
+          Current: ${c.aiStageLabel || c.aiStage || 'Unknown'}
         </span>
       </div>
       ${history.length === 0
@@ -1161,7 +1243,7 @@ const JobDetailPage = (() => {
           </div>`).join('')}`;
 
     window.openModal(
-      `🕐 AI History — ${c.name}`,
+      `AI History — ${c.name}`,
       bodyHTML,
       `<button class="btn btn-secondary" onclick="closeModal()">Close</button>`
     );
@@ -1204,7 +1286,7 @@ const JobDetailPage = (() => {
                 data-modal-search="${escapeHtml([c.id, c.name, c.city, c.state, c._category, c.title, c.company].filter(Boolean).join(' '))}">
               <td>
                 <span style="color:var(--primary);font-weight:600;cursor:pointer">
-                  ${c._source === 'ai' ? '🤖 ' : ''}${c.name}
+                  ${c._source === 'ai' ? '' : ''}${c.name}
                 </span>
               </td>
               <td>${c._category}</td>
@@ -1220,7 +1302,7 @@ const JobDetailPage = (() => {
         : ''}`;
 
     window.openModal(
-      `📋 All Candidates — ${pageState.job.title}`,
+      `All Candidates — ${pageState.job.title}`,
       bodyHTML,
       `<button class="btn btn-secondary" onclick="closeModal()">Close</button>`
     );
@@ -1256,7 +1338,7 @@ const JobDetailPage = (() => {
   ----------------------------------------------------------- */
   function openPostingModal(j) {
     window.openModal(
-      `📄 Original Posting — ${j.title}`,
+      `Original Posting — ${j.title}`,
       `<div style="background:var(--surface-2);border-radius:8px;
                    padding:20px;font-size:14px;line-height:1.7">
          ${j.postingDescription || j.description || 'No posting description available.'}
@@ -1298,20 +1380,20 @@ const JobDetailPage = (() => {
     // ── per-type visual config ──────────────────────────────────────────────
     // dot colour is a CSS custom-property reference or an explicit hex
     const EVENT_META = {
-      job_posted:                     { icon: '🚀', dot: 'var(--primary)',  group: 'status' },
-      job_status_changed:             { icon: '🔄', dot: '#f59e0b',         group: 'status' },
-      job_reopened:                   { icon: '♻️', dot: 'var(--success)',  group: 'status' },
-      job_title_changed:              { icon: '✏️', dot: 'var(--primary)',  group: 'edits'  },
-      job_priority_changed:           { icon: '⚡', dot: '#8b5cf6',         group: 'edits'  },
-      job_rate_changed:               { icon: '💰', dot: '#10b981',         group: 'edits'  },
-      job_openings_changed:           { icon: '👥', dot: 'var(--primary)',  group: 'edits'  },
-      job_dates_changed:              { icon: '📅', dot: '#6366f1',         group: 'edits'  },
-      job_description_changed:        { icon: '📝', dot: 'var(--primary)',  group: 'edits'  },
-      job_primary_recruiter_assigned: { icon: '🌟', dot: 'var(--success)',  group: 'team'   },
-      job_primary_recruiter_changed:  { icon: '🔀', dot: '#f59e0b',         group: 'team'   },
-      job_recruiter_assigned:         { icon: '👤', dot: 'var(--primary)',  group: 'team'   },
-      job_sales_assigned:             { icon: '💼', dot: '#8b5cf6',         group: 'team'   },
-      job_role_assigned:              { icon: '🏷️', dot: '#6366f1',        group: 'team'   },
+      job_posted:                     { icon: '', dot: 'var(--primary)',  group: 'status' },
+      job_status_changed:             { icon: '', dot: '#f59e0b',         group: 'status' },
+      job_reopened:                   { icon: '', dot: 'var(--success)',  group: 'status' },
+      job_title_changed:              { icon: '', dot: 'var(--primary)',  group: 'edits'  },
+      job_priority_changed:           { icon: '', dot: '#8b5cf6',         group: 'edits'  },
+      job_rate_changed:               { icon: '', dot: '#10b981',         group: 'edits'  },
+      job_openings_changed:           { icon: '', dot: 'var(--primary)',  group: 'edits'  },
+      job_dates_changed:              { icon: '', dot: '#6366f1',         group: 'edits'  },
+      job_description_changed:        { icon: '', dot: 'var(--primary)',  group: 'edits'  },
+      job_primary_recruiter_assigned: { icon: '', dot: 'var(--success)',  group: 'team'   },
+      job_primary_recruiter_changed:  { icon: '', dot: '#f59e0b',         group: 'team'   },
+      job_recruiter_assigned:         { icon: '', dot: 'var(--primary)',  group: 'team'   },
+      job_sales_assigned:             { icon: '', dot: '#8b5cf6',         group: 'team'   },
+      job_role_assigned:              { icon: '', dot: '#6366f1',        group: 'team'   },
     };
 
     // ── status chip colours ─────────────────────────────────────────────────
@@ -1334,7 +1416,7 @@ const JobDetailPage = (() => {
 
     // ── render one timeline event row ───────────────────────────────────────
     function renderEvent(event) {
-      const meta      = EVENT_META[event.type] || { icon: '📌', dot: 'var(--primary)', group: 'other' };
+      const meta      = EVENT_META[event.type] || { icon: '', dot: 'var(--primary)', group: 'other' };
       const timestamp = event.timestamp ? new Date(event.timestamp).toLocaleString() : '';
 
       // from → to chips — style depends on event type
@@ -1383,7 +1465,7 @@ const JobDetailPage = (() => {
           <div style="position:relative;z-index:1;flex:0 0 28px;
                       display:flex;align-items:flex-start;justify-content:center;
                       padding-top:1px">
-            <div style="width:28px;height:28px;border-radius:50%;
+            <div style="width:14px;height:14px;margin-top:3px;border-radius:50%;
                         background:${meta.dot};
                         display:flex;align-items:center;justify-content:center;
                         font-size:13px;
@@ -1463,7 +1545,7 @@ const JobDetailPage = (() => {
 
     // ── open modal shell immediately (loading state) ─────────────────────────
     window.openModal(
-      `🕐 Job Activity — ${esc(j.title || 'Job')}`,
+      `Job Activity — ${esc(j.title || 'Job')}`,
       `<div id="jobActivityBody">
          <div style="display:flex;align-items:center;justify-content:center;
                      padding:48px 0;color:var(--text-muted);font-size:13px">
@@ -1476,7 +1558,7 @@ const JobDetailPage = (() => {
 
     // ── fetch and render ──────────────────────────────────────────────────────
     try {
-      const result = await ApiService.getJobActivity(j.id);
+      const result = await ApiService.getJobActivity(j.id, { limit: 100 });
       const body   = document.getElementById('jobActivityBody');
       if (!body) return;
 
@@ -1491,35 +1573,30 @@ const JobDetailPage = (() => {
         return;
       }
 
-      // Render with 'all' tab active initially
+      // Cursor-paginated: the first 100 events render immediately; older/newer
+      // pages are appended when the footer scrolls into view. Tab counts reflect
+      // what has been loaded so far.
+      const activity = { ...result.data, events: [...result.data.events] };
+      let pageInfo = result.pageInfo;
       let activeTab = 'all';
-      body.innerHTML = renderTimeline(result.data, activeTab);
 
-      // Wire tab buttons — re-render the list without re-fetching
-      body.querySelectorAll('[data-activity-tab]').forEach(btn => {
-        btn.onclick = () => {
-          activeTab = btn.dataset.activityTab;
-          body.innerHTML = renderTimeline(result.data, activeTab);
-          // Re-wire after re-render
-          body.querySelectorAll('[data-activity-tab]').forEach(b => {
-            b.onclick = () => {
-              activeTab = b.dataset.activityTab;
-              body.innerHTML = renderTimeline(result.data, activeTab);
-              wireTabButtons();
-            };
-          });
-        };
-      });
-
-      function wireTabButtons() {
-        body.querySelectorAll('[data-activity-tab]').forEach(b => {
-          b.onclick = () => {
-            activeTab = b.dataset.activityTab;
-            body.innerHTML = renderTimeline(result.data, activeTab);
-            wireTabButtons();
-          };
+      const paint = () => {
+        body.innerHTML = renderTimeline(activity, activeTab);
+        body.querySelectorAll('[data-activity-tab]').forEach(btn => {
+          btn.onclick = () => { activeTab = btn.dataset.activityTab; paint(); };
         });
-      }
+        LoadMore.attach(body, {
+          shown: activity.events.length, total: pageInfo.total, hasMore: pageInfo.hasMore,
+          onMore: async () => {
+            const next = await ApiService.getJobActivity(j.id, { limit: 100, cursor: pageInfo.nextCursor });
+            if (!next.success) return;
+            activity.events.push(...next.data.events);
+            pageInfo = next.pageInfo;
+            paint();
+          },
+        });
+      };
+      paint();
 
     } catch (error) {
       const body = document.getElementById('jobActivityBody');

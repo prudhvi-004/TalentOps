@@ -35,7 +35,7 @@ const JobsPage = (() => {
     container.innerHTML = `
       <div class="page-header fade-in">
         <div>
-          <div class="page-title">💼 Jobs</div>
+          <div class="page-title">Jobs</div>
           <div class="page-subtitle" id="jobsSubtitle">Loading...</div>
         </div>
       </div>
@@ -55,7 +55,7 @@ const JobsPage = (() => {
           <option value="medium">Medium</option>
           <option value="low">Low</option>
         </select>
-        <input id="fltSearch" placeholder="Search jobs..." style="min-width:200px"/>
+        <input id="fltSearch" placeholder="Search by job title or ID..." style="min-width:200px"/>
       </div>
 
       <!-- Jobs grid -->
@@ -64,69 +64,72 @@ const JobsPage = (() => {
           <div class="loading-spinner"></div>
           <p>Loading jobs...</p>
         </div>
-      </div>`;
+      </div>
+      <div id="jobsMore"></div>`;
 
-    // Fetch jobs from API
-    const result = await ApiService.getJobs();
+    // Cursor-paginated: the server applies the 30-day window, filters and
+    // search, and returns one page (newest first). Later pages are appended
+    // as the footer scrolls into view, so the page opens after ~25 jobs
+    // instead of after the full job list has been downloaded and rendered.
+    const pager = ApiService.createPager(params => ApiService.getJobs(params));
+    const more = document.getElementById('jobsMore');
+    let loaded = [];
+    let searching = false;
 
-    if (!result.success) {
-      document.getElementById('jobsGrid').innerHTML = `
-        <div class="empty" style="grid-column:1/-1">
-          <h3>Could not load jobs</h3>
-          <p>${result.error}</p>
-        </div>`;
-      return;
-    }
-
-    // Only jobs posted in the last 30 days, newest first.
-    const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
-    const jobDate = j => new Date(j.postingDateRaw || j.createdAtRaw || 0).getTime();
     // Coming from the dashboard Open Jobs tile (?status=open): preselect Open.
     // The 30-day window still applies, matching the tile's count.
-    const urlStatus = new URLSearchParams(window.location.search).get('status') || '';
-    const allJobs = result.data
-      .filter(j => jobDate(j) >= cutoff)
-      .sort((a, b) => jobDate(b) - jobDate(a));
+    const urlParams = new URLSearchParams(window.location.search);
     const statusSelect = document.getElementById('fltStatus');
-    if (statusSelect && urlStatus) statusSelect.value = urlStatus;
-    const initialSearch = new URLSearchParams(window.location.search).get('search') || '';
+    if (statusSelect && urlParams.get('status')) statusSelect.value = urlParams.get('status');
     const searchInput = document.getElementById('fltSearch');
-    if (searchInput) searchInput.value = initialSearch;
+    if (searchInput) searchInput.value = urlParams.get('search') || '';
 
-    document.getElementById('jobsSubtitle').textContent =
-      `${allJobs.length} jobs · Synced from ATS`;
-
-    // Initial render
-    // Filter handlers
-    const applyFilters = () => {
-      const status = document.getElementById('fltStatus').value;
-      const priority = document.getElementById('fltPriority').value;
-      const search = document.getElementById('fltSearch').value.trim().toLowerCase();
-
-      const filtered = allJobs.filter(j => {
-        const haystack = [
-          j.id, j.atsId, j.title, j.client, j.location, j.primaryRecruiter,
-          j.hiringManager, j.status, j.priority, j.jobType,
-          ...(j.requirements || []),
-        ].map(v => String(v || '').toLowerCase());
-        return (!status || j.status === status) &&
-          (!priority || j.priorityLevel === priority) &&
-          (!search || haystack.some(v => v.includes(search)));
+    const grid = () => document.getElementById('jobsGrid');
+    const showPage = (page, append) => {
+      if (!grid()) return; // navigated away
+      if (!page.success) {
+        grid().innerHTML = `
+          <div class="empty" style="grid-column:1/-1">
+            <h3>Could not load jobs</h3>
+            <p>${page.error}</p>
+          </div>`;
+        return;
+      }
+      loaded = append ? loaded.concat(page.rows) : page.rows;
+      currentFiltered = loaded;
+      const total = page.pageInfo.total;
+      document.getElementById('jobsSubtitle').textContent = searching
+        ? `${total} matching jobs · all dates · Synced from ATS`
+        : `${total} jobs · last 30 days · Synced from ATS`;
+      renderJobsView();
+      LoadMore.attach(more, {
+        shown: loaded.length, total, hasMore: pager.hasMore,
+        onMore: async () => { const next = await pager.next(); if (next) showPage(next, true); },
       });
-      currentFiltered = filtered;
-      const sub = document.getElementById('jobsSubtitle');
-      if (sub) sub.textContent = `${filtered.length} jobs · last 30 days · Synced from ATS`;
+    };
+
+    const applyFilters = async () => {
       // A fresh filter result starts back at the top in grid mode — the
       // old scroll threshold no longer applies to the new list.
       viewMode = 'grid';
       scrollThresholdPx = null;
-      renderJobsView();
+      // A search looks through every job (title / job id); the 30-day window
+      // only applies to the unfiltered list, so older jobs can still be found.
+      const q = document.getElementById('fltSearch').value.trim();
+      searching = !!q;
+      const page = await pager.reset({
+        days: q ? '' : 30,
+        status: document.getElementById('fltStatus').value,
+        priority: document.getElementById('fltPriority').value,
+        q,
+      });
+      if (page) showPage(page, false);
     };
 
     ['fltStatus', 'fltPriority'].forEach(id => {
       document.getElementById(id).onchange = applyFilters;
     });
-    document.getElementById('fltSearch').oninput = applyFilters;
+    document.getElementById('fltSearch').oninput = LoadMore.debounce(applyFilters, 250);
 
     container.onscroll = handleScroll;
 
@@ -287,7 +290,7 @@ const JobsPage = (() => {
           <span class="chip chip-${job.status}">${job.status}</span>
         </div>
 
-        <div class="tile-client">🏢 ${job.client} · 📍 ${job.location}</div>
+        <div class="tile-client">${job.client} · ${job.location}</div>
 
         <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
           <span style="font-size:12px;color:var(--text-muted)">${job.priority || '—'}</span>
@@ -300,8 +303,8 @@ const JobsPage = (() => {
         </div>
 
         <div class="tile-meta">
-          <span>👤 ${job.primaryRecruiter || 'Unassigned'}</span>
-          <span>📅 ${job.createdAt || ''}</span>
+          <span>${job.primaryRecruiter || 'Unassigned'}</span>
+          <span>${job.createdAt || ''}</span>
         </div>
       </div>`;
   }
