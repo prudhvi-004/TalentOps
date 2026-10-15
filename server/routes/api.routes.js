@@ -226,17 +226,23 @@ router.get(
 // Automated tasks created by the 120-minute AI note audit.
 // Recruiters see their own tasks; admins see all.
 // ----------------------------------------------------------
-router.get('/tasks', (req, res) => {
+router.get('/tasks', async (req, res) => {
+  // Recruiters see tasks for jobs they are tagged on (any job status); admins see all.
+  // Answers from cache; the scan of the last 30 days runs in the background.
   const isAdmin = req.user?.role === 'ADMIN';
-  const tasks = aiNotesService.listTasks({
-    // Recruiters: only tasks assigned to their own JobDiva recruiter ID.
-    all: isAdmin,
-    assigneeId: req.user?.jobdivaUserId,
-    assigneeName: req.user?.name,
-    jobId: req.query.jobId,
-    status: req.query.status,
-  });
-  res.json({ success: true, data: tasks });
+  if (process.env.ATS_PROVIDER === 'jobdiva') aiNotesService.refreshInBackground();
+  const who = { all: isAdmin, assigneeId: req.user?.jobdivaUserId, assigneeName: req.user?.name };
+  // First visit by this recruiter: scan the last 30 days for their tagged jobs and wait for it
+  // (up to 40s) so the first view isn't empty.
+  if (!isAdmin && (aiNotesService.registerUser(who.assigneeId, who.assigneeName) || !aiNotesService.jobsFor(who).length)
+      && process.env.ATS_PROVIDER === 'jobdiva') {
+    await Promise.race([aiNotesService.scanRecentJobs().catch(() => {}), new Promise(r => setTimeout(r, 40000))]);
+  }
+  // Live: re-read this recruiter's jobs' notes now (jobs read <15s ago are skipped).
+  try { await aiNotesService.syncKnownJobs(aiNotesService.jobsFor(who)); }
+  catch (e) { console.warn('[tasks] live sync failed:', e.message); }
+  const data = aiNotesService.listTasks({ ...who, status: req.query.status, sinceDays: aiNotesService.WINDOW_DAYS });
+  res.json({ success: true, syncing: aiNotesService.isScanning(), data });
 });
 
 // ----------------------------------------------------------

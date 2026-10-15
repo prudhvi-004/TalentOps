@@ -216,9 +216,11 @@ const AIEngagedComponent = (() => {
   function respondedHtml(c) {
     return c.responded
       ? `<div style="font-size:11px;color:var(--text-muted);margin-top:6px">
-           ✍️ Recruiter note added ${fmtWhen(c.respondedAt)}
+           <span title="Recruiter note added" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#16a34a;margin-right:4px"></span>✍️ Recruiter note added ${fmtWhen(c.respondedAt)}
          </div>`
-      : '';
+      : c.overdue
+        ? `<div style="font-size:11px;color:#e53935;margin-top:6px;font-weight:600">⚠️ No recruiter note after 120+ min</div>`
+        : '';
   }
 
   function aiCandidateCard(c, categoryLabel) {
@@ -232,7 +234,7 @@ const AIEngagedComponent = (() => {
       <div class="ai-cand-item fade-in"
            data-ai-cand="${c.id}"
            data-ai-category="${c.aiCategory || 'Applicant'}"
-           style="${bandStyle(c)}">
+           style="${bandStyle(c)}${c.overdue ? 'background:rgba(229,57,53,.08);' : ''}">
 
         <!-- Top row: name + stage badge -->
         <div style="display:flex;justify-content:space-between;

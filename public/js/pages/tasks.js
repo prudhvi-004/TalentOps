@@ -39,14 +39,20 @@ const TasksPage = (() => {
       };
     });
 
-    const result = await ApiService.getTasks();
     const list = container.querySelector('#taskList');
-    if (!result.success) {
-      list.innerHTML = `<div class="empty"><h3>Could not load tasks</h3><p>${esc(result.error)}</p></div>`;
-      return;
+    // Keep the list live while the page is open.
+    while (container.contains(list)) {
+      const result = await ApiService.getTasks();
+      if (!container.contains(list)) return; // navigated away
+      if (!result.success) {
+        list.innerHTML = `<div class="empty"><h3>Could not load tasks</h3><p>${esc(result.error)}</p></div>`;
+        return;
+      }
+      tasks = result.data || [];
+      renderList(list);
+      // Live view: re-read every 5s while scanning, then every 30s while the page is open.
+      await new Promise(r => setTimeout(r, result.syncing ? 5000 : 30000));
     }
-    tasks = result.data || [];
-    renderList(list);
   }
 
   function renderList(list) {
@@ -55,21 +61,45 @@ const TasksPage = (() => {
       list.innerHTML = `<div class="empty"><h3>No ${activeStatus} automated tasks</h3></div>`;
       return;
     }
-    list.innerHTML = rows.map(t => `
-      <div class="ai-cand-item fade-in" data-job="${esc(t.jobId)}" data-cand="${esc(t.candidateId)}" style="cursor:pointer">
-        <div style="display:flex;justify-content:space-between;gap:10px">
-          <div class="cand-name" style="font-size:14px">${esc(t.title)}</div>
-          <span class="chip">${esc(t.priority)}</span>
-        </div>
-        <div class="cand-meta" style="margin-top:4px">
-          Job ${esc(t.jobId)}${t.jobTitle ? ` (${esc(t.jobTitle)})` : ''} · Automated · Created ${when(t.createdAt)}
-          ${t.completedAt ? ` · Completed ${when(t.completedAt)}` : ''}
-        </div>
-        <div style="font-size:12px;margin-top:6px">${esc(t.detail)}</div>
-      </div>`).join('');
+    list.innerHTML = `
+      <div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.06)">
+      <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr style="text-align:left;background:rgba(99,102,241,.08);color:var(--text-muted);font-size:11px;text-transform:uppercase;letter-spacing:.04em">
+          <th style="padding:12px 16px">Name</th>
+          <th style="padding:12px 16px">JobDiva Ref</th>
+          <th style="padding:12px 16px">Sense AI Note</th>
+          <th style="padding:12px 16px">Created</th>
+        </tr></thead>
+        <tbody>${rows.map((t, idx) => {
+          const head = '';
+          const text = t.aiNote || t.sentiment || '';
+          const pos = /positive/i.test(text);
+          const neg = /negative/i.test(text);
+          const band = t.overdue ? '#e53935' : pos ? '#16a34a' : '#6366f1';
+          return `${head}
+          <tr class="task-row" data-job="${esc(t.jobId)}" data-cand="${esc(t.candidateId)}" data-cat="${esc(t.aiCategory)}"
+              style="cursor:pointer;border-top:1px solid var(--border);box-shadow:inset 4px 0 0 ${band};${t.overdue ? 'background:rgba(229,57,53,.07);' : ''}">
+            <td style="padding:12px 16px;font-weight:600">${t.overdue ? '⚠️ ' : ''}${esc(t.candidateName)}</td>
+            <td style="padding:12px 16px">${esc(t.jobRef || t.jobId)}${t.jobTitle ? `<div style="font-size:11px;color:var(--text-muted)">${esc(t.jobTitle)}</div>` : ''}</td>
+            <td style="padding:12px 16px">
+              <span>${esc(t.aiNote || '')}</span>
+              ${t.score != null ? `<span class="chip" style="margin-left:6px">Score ${esc(t.score)}</span>` : ''}
+            </td>
+            <td style="padding:12px 16px;white-space:nowrap;color:${t.overdue ? '#e53935' : 'var(--text-muted)'}">
+              ${when(t.createdAt)}${t.overdue ? '<div style="font-size:11px">120+ min, no recruiter note</div>' : ''}${t.completedAt ? `<div style="font-size:11px">Done ${when(t.completedAt)}</div>` : ''}
+            </td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table></div></div>`;
 
     list.querySelectorAll('[data-job]').forEach(el => {
-      el.onclick = () => window.navigate(`/jobs/${el.dataset.job}`);
+      el.onclick = () => {
+        // Opens the job in split view: job on one side, candidate on the other
+        sessionStorage.setItem('openCandId', el.dataset.cand);
+        sessionStorage.setItem('openCandSource', 'ai');
+        sessionStorage.setItem('openCandAICat', el.dataset.cat || 'Applicant');
+        window.navigate(`/jobs/${el.dataset.job}`);
+      };
     });
   }
 

@@ -54,15 +54,15 @@ function loadMockData(filename) {
 let authToken = null;
 let tokenExpiry = 0;
 const jobActivityCache = new Map();
-const JOB_ACTIVITY_CACHE_MS = 10 * 60 * 1000;
+const JOB_ACTIVITY_CACHE_MS = 60 * 1000;
 // getJobs() fans out into several BI calls per recruiter (list + chunked
 // detail/contacts/users). Without a cache, fast repeat navigation (job list
 // -> job detail -> back) re-runs all of it and can trip JobDiva's rate limit
 // (429 Request Limit Exceeded), especially for recruiters with 100+ jobs.
 const jobsListCache = new Map();
-const JOBS_LIST_CACHE_MS = 5 * 60 * 1000;
+const JOBS_LIST_CACHE_MS = 15 * 1000;
 const submittalsCache = new Map();
-const SUBMITTALS_CACHE_MS = 5 * 60 * 1000;
+const SUBMITTALS_CACHE_MS = 15 * 1000;
 // Stale-while-revalidate: once loaded, data is served instantly from memory
 // for up to this long while a refresh runs in the background.
 const swrInflight = new Map();
@@ -89,39 +89,41 @@ function writeDiskCache(name, key, entry) {
   } catch (_) { /* best effort */ }
 }
 
-function swr(cache, ttlMs, key, loader, maxStaleMs = SWR_DISK_MAX_AGE_MS) {
+function swr(cache, ttlMs, key, loader) {
+  // Real-time policy: data is served from memory only for a very short TTL
+  // (it just de-duplicates bursts of identical requests and protects JobDiva's
+  // rate limit). Past that, the request waits for fresh data from JobDiva.
+  // The last good copy (memory, then disk) is used ONLY if JobDiva errors.
   const inflightKey = `${cache._name}|${key}`;
   const now = Date.now();
-  const refresh = () => {
-    if (!swrInflight.has(inflightKey)) {
-      const p = loader().then(value => {
-        const entry = { value, loadedAt: Date.now() };
-        cache.set(key, entry);
-        writeDiskCache(cache._name, key, entry);
-        return value;
-      }).finally(() => swrInflight.delete(inflightKey));
-      p.catch(() => {}); // surfaced to the awaiting caller, not unhandled
-      swrInflight.set(inflightKey, p);
+  const entry = cache.get(key);
+  if (entry && now - entry.loadedAt < ttlMs) return Promise.resolve(entry.value);
+
+  if (!swrInflight.has(inflightKey)) {
+    const p = loader().then(value => {
+      const fresh = { value, loadedAt: Date.now() };
+      cache.set(key, fresh);
+      writeDiskCache(cache._name, key, fresh);
+      return value;
+    }).finally(() => swrInflight.delete(inflightKey));
+    p.catch(() => {});
+    swrInflight.set(inflightKey, p);
+  }
+  return swrInflight.get(inflightKey).catch(err => {
+    const stale = entry || readDiskCache(cache._name, key);
+    if (stale) {
+      console.warn(`[JobDiva] ${cache._name} refresh failed (${err.message}); serving last good copy`);
+      return stale.value;
     }
-    return swrInflight.get(inflightKey);
-  };
-  let entry = cache.get(key);
-  if (!entry) {
-    entry = readDiskCache(cache._name, key);
-    if (entry) cache.set(key, entry);
-  }
-  if (entry && now - entry.loadedAt < maxStaleMs) {
-    if (now - entry.loadedAt >= ttlMs) refresh().catch(() => {});
-    return Promise.resolve(entry.value);
-  }
-  return refresh();
+    throw err;
+  });
 }
 const jobCandidatesCache = new Map();
 const candidateProfileCache = new Map();
 jobCandidatesCache._name = 'job-candidates';
 candidateProfileCache._name = 'candidate';
-const JOB_CANDIDATES_CACHE_MS = 3 * 60 * 1000;
-const CANDIDATE_PROFILE_CACHE_MS = 60 * 1000;
+const JOB_CANDIDATES_CACHE_MS = 15 * 1000;
+const CANDIDATE_PROFILE_CACHE_MS = 15 * 1000;
 function invalidateCache(cache, key) {
   cache.delete(key);
   try { fs.unlinkSync(cacheFile(cache._name, key)); } catch (_) { /* none */ }
@@ -271,7 +273,7 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const JOBDIVA_MAX_429_RETRIES = 6;
 // Cap simultaneous JobDiva GETs. The dashboard fires ~6 data calls at once and
 // each fans out further; unbounded bursts trip "Request Limit Exceeded".
-const JOBDIVA_MAX_CONCURRENT = Number(process.env.JOBDIVA_MAX_CONCURRENT) || 4;
+const JOBDIVA_MAX_CONCURRENT = Number(process.env.JOBDIVA_MAX_CONCURRENT) || 6;
 let jobDivaActive = 0;
 const jobDivaWaiters = [];
 
@@ -1118,12 +1120,17 @@ async function getPagedJobUpdates(fromDate, toDate) {
   let pageNumber = 1;
 
   while (pageNumber <= 100) {
-    const data = await requestJobDivaGet(config.endpoints.newUpdatedJobRecords, {
-      fromDate,
-      toDate,
-      pageNumber,
-      pageSize,
-    });
+    // Retry transient network errors (ECONNRESET etc.) so one hiccup doesn't lose a page.
+    let data;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        data = await requestJobDivaGet(config.endpoints.newUpdatedJobRecords, { fromDate, toDate, pageNumber, pageSize });
+        break;
+      } catch (e) {
+        if (attempt >= 3) throw e;
+        await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
+      }
+    }
     const pageRows = activityRows(data);
     rows.push(...pageRows);
 
@@ -2277,9 +2284,75 @@ async function getJobAssignment(jobId) {
   const primary = pickPrimaryRecruiter(userRows);
   return {
     jobTitle: row ? String(firstDefined(row, ['title', 'TITLE', 'jobTitle', 'JOBTITLE'], '')) : '',
+    jobRef: row ? String(firstDefined(row, ['jobDivaNo', 'JOBDIVANO', 'jobdivaref', 'JOBDIVAREF', 'refNo', 'REFNO'], '')) : '',
     assigneeId: primary ? primary.id : '',
     assigneeName: primary ? primary.name : '',
+    // every internal user tagged on the job
+    users: userRows.map(u => {
+      const parts = [firstDefined(u, ['FIRSTNAME', 'firstName']), firstDefined(u, ['LASTNAME', 'lastName'])].filter(Boolean).join(' ');
+      return {
+        id: String(firstDefined(u, ['userId', 'USERID', 'id', 'ID', 'CONTACTID'], '')),
+        name: String(firstDefined(u, ['userName', 'USERNAME', 'name', 'NAME', 'fullName', 'FULLNAME'], parts) || parts),
+      };
+    }).filter(u => u.id || u.name),
   };
+}
+
+// ----------------------------------------------------------
+// Job IDs created/updated in the last `days` days, any status
+// (open, closed, on hold ...). NewUpdatedJobRecords allows 14-day
+// windows, so the range is split and fetched in parallel.
+// ----------------------------------------------------------
+async function getRecentJobIds(days = 30) {
+  if (provider !== 'jobdiva') return [];
+  const end = new Date();
+  const start = new Date(end.getTime() - days * 86400000);
+  const windows = activityWindows(start, end);
+  const results = await mapWithConcurrency(windows, JOBDIVA_MAX_CONCURRENT,
+    w => getPagedJobUpdates(w.fromDate, w.toDate));
+  return unique(results.flat().map(r => activityJobId(r)).filter(v => v != null && v !== '').map(String));
+}
+
+// Title, JobDiva ref and tagged users for many jobs in 2 batched calls
+// per 50 jobs (instead of 2 calls per job).
+async function getJobsMeta(jobIds) {
+  const meta = {};
+  if (provider !== 'jobdiva' || !jobIds.length) return meta;
+  const chunks = chunk(jobIds.map(String), 50);
+  await mapWithConcurrency(chunks, JOBDIVA_MAX_CONCURRENT, async ids => {
+    const [detail, users] = await Promise.all([
+      safeGet(config.endpoints.jobsDetail, { jobIds: ids }),
+      safeGet(config.endpoints.jobsInternalUsers, { jobIds: ids }),
+    ]);
+    for (const raw of activityRows(detail)) {
+      const id = String(activityJobId(raw) ?? '');
+      if (!id) continue;
+      meta[id] = {
+        jobTitle: String(firstDefined(raw, ['title', 'TITLE', 'jobTitle', 'JOBTITLE'], '')),
+        jobRef: String(firstDefined(raw, ['jobDivaNo', 'JOBDIVANO', 'jobdivaref', 'JOBDIVAREF', 'refNo', 'REFNO'], '')),
+        users: [], assigneeId: '', assigneeName: '',
+      };
+    }
+    const byJob = {};
+    for (const u of activityRows(users)) {
+      const id = String(activityJobId(u) ?? '');
+      if (id) (byJob[id] = byJob[id] || []).push(u);
+    }
+    for (const [id, rows] of Object.entries(byJob)) {
+      const m = meta[id] = meta[id] || { jobTitle: '', jobRef: '', users: [] };
+      const primary = pickPrimaryRecruiter(rows);
+      m.assigneeId = primary ? primary.id : '';
+      m.assigneeName = primary ? primary.name : '';
+      m.users = rows.map(u => {
+        const parts = [firstDefined(u, ['FIRSTNAME', 'firstName']), firstDefined(u, ['LASTNAME', 'lastName'])].filter(Boolean).join(' ');
+        return {
+          id: String(firstDefined(u, ['userId', 'USERID', 'id', 'ID', 'CONTACTID'], '')),
+          name: String(firstDefined(u, ['userName', 'USERNAME', 'name', 'NAME', 'fullName', 'FULLNAME'], parts) || parts),
+        };
+      }).filter(u => u.id || u.name);
+    }
+  });
+  return meta;
 }
 
 // ----------------------------------------------------------
@@ -2464,6 +2537,8 @@ module.exports = {
   getAIEngagedForJob,
   getJobNotes,
   getJobAssignment,
+  getRecentJobIds,
+  getJobsMeta,
   writeNote,
 };
 

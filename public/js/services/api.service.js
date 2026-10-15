@@ -30,6 +30,7 @@ const ApiService = (() => {
   async function request(url, options = {}) {
     try {
       const response = await fetch(url, {
+        cache: 'no-store',
         headers: {
           'Content-Type': 'application/json',
           ...options.headers,

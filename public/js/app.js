@@ -160,7 +160,7 @@ async function renderPage() {
       await AdminPage.render(content);
 
     } else if (path === '/tasks') {
-      await loadScript('/js/pages/tasks.js');
+      await loadScript('/js/pages/tasks.js?v=20261014-flat');
       await TasksPage.render(content);
 
     } else if (path === '/team') {

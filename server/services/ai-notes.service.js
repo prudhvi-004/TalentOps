@@ -15,6 +15,8 @@
 //   notes in BOTH sections gets an orange band; the most recent
 //   note decides which section they are listed in.
 //
+// Task bar: a task is created as soon as the AI note is seen; once
+// 120 min pass without a REC_AI note it is flagged overdue (highlighted).
 // Audit (120 min):
 //   Clock starts at the latest AI note's DATECREATED. Any note with
 //   TYPENAME = REC_AI on the same candidate + job created after it
@@ -34,10 +36,13 @@ const atsService = require('./ats.service');
 
 const AI_USER_ID = String(process.env.AI_NOTE_USER_ID || '1453881');
 const AI_USER_NAME = String(process.env.AI_NOTE_USER_NAME || 'Sense Messaging').toLowerCase();
-const HUMAN_TYPENAME = 'REC_AI';
+// Recruiter response note type in JobDiva ("Rec - Sense AI"); dash/space tolerant.
+// The job-notes feed returns a blank TYPENAME for recruiter notes, so a blank
+// type from a non-AI user also counts as the recruiter's response.
+const isHumanType = t => /^rec\s*[-–—]\s*sense\s*ai$/i.test(String(t || '').trim());
 const AUDIT_WINDOW_MS = 120 * 60 * 1000;
 const POLL_INTERVAL_MS = 60 * 60 * 1000;
-const FRESH_MS = 5 * 60 * 1000; // on-demand refresh throttle
+const FRESH_MS = 15 * 1000; // on-demand refresh throttle (real-time: only dedupes bursts)
 // DATECREATED has no zone; JobDiva returns account-local time.
 const NOTE_TZ = process.env.JOBDIVA_NOTE_TIMEZONE || 'America/New_York';
 
@@ -46,6 +51,8 @@ const STATE_FILE = path.join(__dirname, '..', '..', 'data', 'runtime', 'ai-audit
 const KNOWN_TYPES = [
   { re: /^sense ai auto sourcing evaluation:\s*positive$/i, section: 'Candidate', sentiment: 'positive' },
   { re: /^sense ai auto sourcing evaluation:\s*negative$/i, section: 'Candidate', sentiment: 'negative' },
+  { re: /^sense ai applicant evaluation:\s*positive$/i,     section: 'Applicant', sentiment: 'positive' },
+  { re: /^sense ai applicant evaluation:\s*negative$/i,     section: 'Applicant', sentiment: 'negative' },
   { re: /^sense ai applicant review:\s*positive$/i,         section: 'Applicant', sentiment: 'positive' },
   { re: /^sense ai applicant review:\s*negative$/i,         section: 'Applicant', sentiment: 'negative' },
 ];
@@ -114,7 +121,7 @@ function buildItems(notes) {
   for (const { n, t } of rows) {
     const cid = String(n.CANDIDATEID || '');
     if (!cid || cid === '0') continue;
-    if (String(n.TYPENAME || '').trim().toUpperCase() === HUMAN_TYPENAME) {
+    if (!isAiUser(n) && (isHumanType(n.TYPENAME) || !String(n.TYPENAME || '').trim())) {
       if (!humanByCand.has(cid)) humanByCand.set(cid, []);
       humanByCand.get(cid).push({ t, by: n.RECRUITERNAME });
       continue;
@@ -169,22 +176,24 @@ function reconcileTasks(job, items, now) {
       if (existing && existing.status !== 'completed') {
         existing.status = 'completed';
         existing.completedAt = stamp;
+        continue;
       }
-      continue;
+      if (existing) continue;
+      // Already answered before we saw it: record it as a completed task.
     }
     if (existing) {
       if (!existing.assigneeId && job.assigneeId) {
         existing.assigneeId = job.assigneeId;
         existing.assigneeName = job.assigneeName || '';
       }
+      existing.aiNote = item.aiStageLabel;
       if (!existing.jobTitle && job.jobTitle) existing.jobTitle = job.jobTitle;
       continue;
     }
-    if (now - Date.parse(item.aiNoteAt) < AUDIT_WINDOW_MS) continue;
     state.tasks[id] = {
       id,
       type: 'Automated',
-      status: 'pending',
+      status: item.responded ? 'completed' : 'pending',
       jobId: item.jobId,
       jobTitle: job.jobTitle || '',
       candidateId: item.id,
@@ -193,16 +202,18 @@ function reconcileTasks(job, items, now) {
       assigneeName: job.assigneeName || '',
       priority: item.sentiment === 'positive' ? 'High' : 'Normal',
       title: `Review AI Evaluated Candidate — ${item.name}`,
-      detail: `AI evaluated this candidate at ${item.aiNoteAt}. No follow-up note has been recorded. Please review and drop a REC_AI note.`,
+      detail: `AI evaluated this candidate at ${item.aiNoteAt}. Please review and drop a 'Rec - Sense AI' note within 120 minutes.`,
+      aiNote: item.aiStageLabel,
       aiNoteAt: item.aiNoteAt,
+      dueAt: new Date(Date.parse(item.aiNoteAt) + AUDIT_WINDOW_MS).toISOString(),
       createdAt: stamp,
-      completedAt: null,
+      completedAt: item.responded ? item.respondedAt : null,
     };
   }
 }
 
 // ---- sync ------------------------------------------------------
-async function syncJob(jobId, jobInfo = {}) {
+async function syncJob(jobId, jobInfo = {}, batch = false) {
   jobId = String(jobId);
   if (inflight.has(jobId)) return inflight.get(jobId);
   const p = (async () => {
@@ -212,9 +223,15 @@ async function syncJob(jobId, jobInfo = {}) {
     if (typeof jobInfo === 'function' && !prev.assigneeId) {
       info = await Promise.resolve(jobInfo()).catch(() => ({}));
     }
+    // Self-heal: jobs synced without owner/users info get them from one batched lookup.
+    if (!info.users && !(prev.users && prev.users.length)) {
+      info = { ...info, ...((await atsService.getJobsMeta([jobId]).catch(() => ({})))[jobId] || {}) };
+    }
     const job = {
       jobId,
       jobTitle: info.jobTitle || prev.jobTitle || '',
+      jobRef: info.jobRef || prev.jobRef || '',
+      users: (info.users && info.users.length) ? info.users : (prev.users || []),
       assigneeId: String(info.assigneeId || prev.assigneeId || ''),
       assigneeName: info.assigneeName || prev.assigneeName || '',
     };
@@ -222,7 +239,7 @@ async function syncJob(jobId, jobInfo = {}) {
     const items = buildItems(notes);
     reconcileTasks(job, items, Date.now());
     state.jobs[jobId] = { ...job, syncedAt: Date.now(), items };
-    save();
+    if (!batch) save();
     return state.jobs[jobId];
   })().finally(() => inflight.delete(jobId));
   inflight.set(jobId, p);
@@ -231,12 +248,16 @@ async function syncJob(jobId, jobInfo = {}) {
 
 // Cached result is returned instantly; a stale one refreshes in the background.
 async function getAIEngagedForJob(jobId, jobInfo) {
+  // Always fresh: re-read the job's notes unless they were read seconds ago.
   let rec = state.jobs[String(jobId)];
-  if (!rec) rec = await syncJob(jobId, jobInfo);
-  else if (Date.now() - rec.syncedAt > FRESH_MS) {
-    syncJob(jobId, jobInfo).catch(e => console.warn(`[ai-notes] Refresh failed for job ${jobId}: ${e.message}`));
+  if (!rec || Date.now() - rec.syncedAt > FRESH_MS) {
+    try { rec = await syncJob(jobId, jobInfo); }
+    catch (e) { if (!rec) throw e; console.warn(`[ai-notes] Refresh failed for job ${jobId}: ${e.message}`); }
   }
-  const items = rec.items || [];
+  const now = Date.now();
+  const items = (rec.items || []).map(i => ({
+    ...i, overdue: !i.responded && now - Date.parse(i.aiNoteAt) >= AUDIT_WINDOW_MS,
+  }));
   return {
     applicants: items.filter(i => i.aiCategory === 'Applicant'),
     candidates: items.filter(i => i.aiCategory === 'Candidate'),
@@ -245,28 +266,143 @@ async function getAIEngagedForJob(jobId, jobInfo) {
 
 // assigneeId set -> strict match (unassigned tasks are admin-only);
 // jobId optional filter.
-function listTasks({ assigneeId, jobId, status } = {}) {
+// candidateId -> item, built once per job sync (keeps listTasks O(tasks)).
+const itemIdx = new WeakMap();
+function itemIndex(jobId) {
+  const rec = state.jobs[jobId];
+  if (!rec) return new Map();
+  let m = itemIdx.get(rec);
+  if (!m) { m = new Map((rec.items || []).map(i => [String(i.id), i])); itemIdx.set(rec, m); }
+  return m;
+}
+
+function listTasks({ all, assigneeId, assigneeName, jobId, jobIds, status, sinceDays } = {}) {
+  const since = sinceDays ? Date.now() - sinceDays * 86400000 : 0;
+  const nm = String(assigneeName || '').trim().toLowerCase();
+  const now = Date.now();
   return Object.values(state.tasks)
-    .filter(t => !assigneeId || String(t.assigneeId) === String(assigneeId))
+    .map(t => {
+      const it = itemIndex(t.jobId).get(String(t.candidateId));
+      return { ...t, aiNote: t.aiNote || (it && it.aiStageLabel) || '', aiCategory: t.aiCategory || (it && it.aiCategory) || 'Applicant',
+        sentiment: t.sentiment || (it && it.sentiment) || '', score: t.score ?? (it && it.score) ?? null,
+        jobRef: (state.jobs[t.jobId] || {}).jobRef || '' };
+    })
+    .map(t => ({ ...t, overdue: t.status !== 'completed' && now >= Date.parse(t.dueAt || t.aiNoteAt) + (t.dueAt ? 0 : AUDIT_WINDOW_MS) }))
+    .filter(t => all || (!assigneeId && !nm) ||
+      (assigneeId && String(t.assigneeId) === String(assigneeId)) ||
+      (nm && String(t.assigneeName || '').trim().toLowerCase() === nm) ||
+      ((state.jobs[t.jobId] || {}).users || []).some(u =>
+        (assigneeId && String(u.id) === String(assigneeId)) ||
+        (nm && String(u.name || '').trim().toLowerCase() === nm)))
     .filter(t => !jobId || String(t.jobId) === String(jobId))
+    .filter(t => !jobIds || jobIds.has(String(t.jobId)))
+    .filter(t => !since || Date.parse(t.aiNoteAt) >= since)
     .filter(t => !status || t.status === status)
-    .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+    .sort((a, b) => Date.parse(b.aiNoteAt) - Date.parse(a.aiNoteAt));
+}
+
+// Fetch the JobDiva reference no. for jobs that don't have it yet.
+async function ensureJobRefs(jobIds, loader) {
+  const missing = [...new Set(jobIds.map(String))].filter(id => state.jobs[id] && (!state.jobs[id].jobRef || !state.jobs[id].users || !state.jobs[id].users.length));
+  await Promise.all(missing.map(async id => {
+    try {
+      const info = await loader(id);
+      if (info && info.jobRef) state.jobs[id].jobRef = info.jobRef;
+      if (info && info.users) state.jobs[id].users = info.users;
+    } catch (_) { /* leave blank */ }
+  }));
+  if (missing.length) save();
+}
+
+// ---- background scan: jobs created/updated in the last 30 days, any status ----
+// JobsListByUser returns nothing for tagged (non-owner) recruiters, so the
+// job universe comes from the job-update feed and tasks are matched to
+// recruiters through the users tagged on each job (JobsInternalUsersDetail).
+const SCAN_DAYS = Number(process.env.AI_SCAN_DAYS) || 30;
+const SCAN_CONCURRENCY = Number(process.env.AI_SCAN_CONCURRENCY) || 8;
+const WINDOW_DAYS = SCAN_DAYS;
+const SCAN_EVERY_MS = 5 * 60 * 1000; // discover new/changed jobs
+let scanning = null;
+let lastScanAt = 0;
+
+// Users who have opened Tasks (persisted): only jobs they are tagged on get their notes read.
+function matchesUser(users, assigneeId, assigneeName) {
+  const nm = String(assigneeName || '').trim().toLowerCase();
+  return (users || []).some(u => (assigneeId && String(u.id) === String(assigneeId)) ||
+    (nm && String(u.name || '').trim().toLowerCase() === nm));
+}
+function registerUser(id, name) {
+  state.activeUsers = state.activeUsers || {};
+  const key = String(id || name || '');
+  if (!key || state.activeUsers[key]) return false;
+  state.activeUsers[key] = { id: String(id || ''), name: String(name || '') };
+  save();
+  lastScanAt = 0; // new recruiter: scan for their jobs now
+  return true;
+}
+
+// 1) job ids of the last 30 days (any status)   2) tagged users for all of them
+// in a few batched calls   3) read notes ONLY for jobs tagged to an active recruiter.
+async function scanRecentJobs() {
+  if (scanning) return scanning;
+  scanning = (async () => {
+    const ids = [...new Set((await atsService.getRecentJobIds(SCAN_DAYS)).map(String))];
+    const meta = await atsService.getJobsMeta(ids);
+    const users = Object.values(state.activeUsers || {});
+    const targets = ids.filter(id => users.some(u => matchesUser((meta[id] || {}).users, u.id, u.name)));
+    let i = 0, done = 0;
+    await Promise.all(Array.from({ length: Math.min(SCAN_CONCURRENCY, targets.length) }, async () => {
+      while (i < targets.length) {
+        const id = targets[i++];
+        try { await syncJob(id, meta[id] || {}, true); if (++done % 20 === 0) save(); }
+        catch (e) { console.warn(`[ai-notes] Sync failed for job ${id}: ${e.message}`); }
+      }
+    }));
+    const keep = new Set(targets);
+    for (const id of Object.keys(state.jobs)) if (!keep.has(id)) delete state.jobs[id];
+    for (const [tid, t] of Object.entries(state.tasks)) if (!keep.has(String(t.jobId))) delete state.tasks[tid];
+    lastScanAt = Date.now();
+    save();
+    console.log(`[ai-notes] ${ids.length} jobs in last ${SCAN_DAYS} days; read notes of ${targets.length} tagged to ${users.length} recruiter(s)`);
+  })().finally(() => { scanning = null; });
+  return scanning;
+}
+// Re-read the notes of specific jobs right now (used per request so the
+// Tasks page is live); jobs read within FRESH_MS are skipped.
+async function syncKnownJobs(jobIds) {
+  const ids = jobIds.map(String).filter(id => state.jobs[id] && Date.now() - state.jobs[id].syncedAt > FRESH_MS);
+  let i = 0;
+  await Promise.all(Array.from({ length: Math.min(SCAN_CONCURRENCY, ids.length) }, async () => {
+    while (i < ids.length) {
+      const id = ids[i++];
+      try { await syncJob(id, {}, true); } catch (e) { console.warn(`[ai-notes] Live sync failed for job ${id}: ${e.message}`); }
+    }
+  }));
+  if (ids.length) save();
+}
+function jobsFor({ all, assigneeId, assigneeName }) {
+  return Object.entries(state.jobs).filter(([, j]) => all ||
+    (assigneeId && String(j.assigneeId) === String(assigneeId)) ||
+    (assigneeName && String(j.assigneeName || '').trim().toLowerCase() === String(assigneeName).trim().toLowerCase()) ||
+    matchesUser(j.users, assigneeId, assigneeName)
+  ).map(([id]) => id);
+}
+function isScanning() { return !!scanning || !lastScanAt; }
+function refreshInBackground() {
+  if (!scanning && Date.now() - lastScanAt > SCAN_EVERY_MS) {
+    scanRecentJobs().catch(e => console.warn('[ai-notes] Scan failed:', e.message));
+  }
 }
 
 let timer = null;
 function startHourlyPoll() {
   if (timer || String(process.env.ATS_PROVIDER || 'mock') === 'mock') return;
-  const run = async () => {
-    for (const jobId of Object.keys(state.jobs)) {
-      try { await syncJob(jobId); }
-      catch (e) { console.warn(`[ai-notes] Hourly sync failed for job ${jobId}: ${e.message}`); }
-    }
-  };
-  timer = setInterval(run, POLL_INTERVAL_MS);
+  scanRecentJobs().catch(e => console.warn('[ai-notes] Initial scan failed:', e.message));
+  timer = setInterval(() => scanRecentJobs().catch(e => console.warn('[ai-notes] Scan failed:', e.message)), SCAN_EVERY_MS);
   timer.unref();
 }
 
 module.exports = {
-  getAIEngagedForJob, syncJob, listTasks, startHourlyPoll,
-  _test: { buildItems, parseNoteDate, classify, reconcileTasks },
+  getAIEngagedForJob, syncJob, listTasks, syncKnownJobs, jobsFor, registerUser, scanRecentJobs, refreshInBackground, isScanning, startHourlyPoll,
+  WINDOW_DAYS, _test: { buildItems, parseNoteDate, classify, reconcileTasks },
 };
