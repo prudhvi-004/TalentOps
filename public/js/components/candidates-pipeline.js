@@ -86,8 +86,8 @@ const CandidatesPipelineComponent = (() => {
           <!-- Name + meta -->
           <div class="cand-name">${c.name}</div>
           <div class="cand-meta">
-            📧 ${c.email || '—'} ·
-            📍 ${c.city || c.location || '—'}, ${c.state || ''}
+            ${c.email || '—'} ·
+            ${c.city || c.location || '—'}, ${c.state || ''}
             ${c.experience ? `· ${c.experience}y exp` : ''}
           </div>
 

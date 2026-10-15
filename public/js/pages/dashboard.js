@@ -28,7 +28,6 @@ const DashboardPage = (() => {
   let activeDateRange = 'today';
   // Raw (unfiltered) records fetched once per page load; date-range button
   // clicks just re-filter this cached data client-side — no re-fetch needed.
-  let rawData = { submittals: [], interviews: [], starts: [], fps: [], myPrimary: [] };
 
   function render(container) {
     const m = DUMMY_METRICS;
@@ -37,7 +36,7 @@ const DashboardPage = (() => {
     container.innerHTML = `
       <div class="page-header fade-in">
         <div>
-          <div class="page-title">Welcome Back 👋</div>
+          <div class="page-title">Welcome Back </div>
           <div class="page-subtitle">
             TalentOps Demo ·
             ${new Date().toLocaleDateString('en-US',
@@ -124,39 +123,39 @@ const DashboardPage = (() => {
     loadTileData();
   }
 
+  // Tiles only need counts, so each one asks the server for a single row
+  // (limit=1) and reads the exact total from pageInfo — no full lists are
+  // downloaded or filtered in the browser.
   async function loadTileData() {
     await loadScript('/js/components/record-detail-shared.js');
-
-    const [submittals, interviews, starts, fps, myPrimary] = await Promise.all([
-      ApiService.getSubmittals(),
-      ApiService.getInterviews(),
-      ApiService.getStarts(),
-      ApiService.getFirstPresentations(),
-      ApiService.getMyPrimaryJobRecords(),
-    ]);
-
-    rawData = {
-      submittals: submittals.success ? submittals.data.filter(r => String(r.type).toLowerCase() === 'external') : [],
-      interviews: interviews.success ? interviews.data : [],
-      starts: starts.success ? starts.data : [],
-      fps: fps.success ? fps.data : [],
-      myPrimary: myPrimary.success ? myPrimary.data : [],
-    };
-
     applyDateRangeToTiles();
   }
 
-  // Re-filters the cached tile data against the currently selected date
-  // range and updates each tile's displayed count. Called on initial load
-  // and every time the Date Range selection changes.
-  function applyDateRangeToTiles() {
-    const filterByRange = rows => rows.filter(r => RecordDetailShared.inRange(r.dateRaw, activeDateRange));
+  let tileRequestId = 0;
 
-    updatePerfTile('submittals', filterByRange(rawData.submittals).length);
-    updatePerfTile('interviews', filterByRange(rawData.interviews).length);
-    updatePerfTile('starts', filterByRange(rawData.starts).length);
-    updatePerfTile('fps', filterByRange(rawData.fps).length);
-    setTileCount('myPrimaryCount', new Set(filterByRange(rawData.myPrimary).map(r => r.jobId)).size);
+  // Re-queries the tile counts for the currently selected date range.
+  // Called on initial load and every time the Date Range selection changes.
+  async function applyDateRangeToTiles() {
+    const requestId = ++tileRequestId;
+    const range = RecordDetailShared.rangeParams(activeDateRange,
+      document.getElementById('dateFrom')?.value, document.getElementById('dateTo')?.value);
+    const count = (fetchPage, extra = {}) =>
+      fetchPage({ ...range, ...extra, limit: 1 }).then(r => (r.success ? r.pageInfo : null));
+
+    const [submittals, interviews, starts, fps, myPrimary] = await Promise.all([
+      count(ApiService.getSubmittals, { type: 'external' }),
+      count(ApiService.getInterviews),
+      count(ApiService.getStarts),
+      count(ApiService.getFirstPresentations),
+      count(ApiService.getMyPrimaryJobRecords, { distinct: 1 }),
+    ]);
+    if (requestId !== tileRequestId) return; // a newer range selection superseded this one
+
+    updatePerfTile('submittals', submittals ? submittals.total : 0);
+    updatePerfTile('interviews', interviews ? interviews.total : 0);
+    updatePerfTile('starts', starts ? starts.total : 0);
+    updatePerfTile('fps', fps ? fps.total : 0);
+    setTileCount('myPrimaryCount', myPrimary ? myPrimary.distinctTotal : 0);
   }
 
   function setTileCount(elId, value) {
@@ -218,7 +217,7 @@ const DashboardPage = (() => {
         <div class="perf-label">Talk Time (Daily)</div>
         ${achieved
           ? `<div class="perf-value">${h}h ${min}m</div>
-             <div class="perf-target">🎯 Goal reached!</div>`
+             <div class="perf-target">Goal reached!</div>`
           : `<div class="perf-target" style="margin-top:6px">
                Working toward 2h daily target
              </div>`}
@@ -259,31 +258,30 @@ const DashboardPage = (() => {
     const grid = document.getElementById('recentJobsGrid');
     if (!grid) return;
 
-    const result = await ApiService.getJobs();
+    // Two small paged queries instead of downloading every job: the 6 newest
+    // for the tiles, and an exact total for the Open Jobs tile (open, posted
+    // in the last 30 days — same window as the Jobs page).
+    const [result, open] = await Promise.all([
+      ApiService.getJobs({ limit: 6 }),
+      ApiService.getJobs({ limit: 1, status: 'open', days: 30 }),
+    ]);
     if (!result.success) {
       grid.innerHTML = `<div class="empty"><p>Could not load jobs</p></div>`;
       return;
     }
 
-    const jobs = [...result.data].sort((a, b) =>
-      new Date(b.postingDateRaw || b.createdAtRaw || 0) - new Date(a.postingDateRaw || a.createdAtRaw || 0));
-
-    // Update Open Jobs tile count
-    // Same window as the Jobs page: posted in the last 30 days, status open.
-    const cutoff30 = Date.now() - 30 * 24 * 60 * 60 * 1000;
-    const openJobs = jobs.filter(j => j.status === 'open' &&
-      new Date(j.postingDateRaw || j.createdAtRaw || 0).getTime() >= cutoff30);
+    const jobs = result.data;
     const openEl = document.getElementById('openJobsCount');
-    if (openEl) openEl.textContent = openJobs.length;
+    if (openEl) openEl.textContent = open.success ? open.pageInfo.total : '—';
 
     // Render recent job tiles
-    grid.innerHTML = jobs.slice(0, 6).map(job => `
+    grid.innerHTML = jobs.map(job => `
       <div class="tile fade-in" data-job="${job.id}" style="cursor:pointer">
         <div class="tile-header">
           <div class="tile-title">${job.title}</div>
           <span class="chip chip-${job.status}">${job.status}</span>
         </div>
-        <div class="tile-client">🏢 ${job.client} · 📍 ${job.location}</div>
+        <div class="tile-client">${job.client} · ${job.location}</div>
         <div style="margin-top:6px">
           <span style="font-size:12px;color:var(--text-muted)">
             ${job.salary}

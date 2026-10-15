@@ -35,6 +35,14 @@ const atsService =
 const aiNotesService =
   require('../services/ai-notes.service');
 
+const { respond, toTime } = require('../utils/pagination');
+
+// Shared cursor-pagination configs. Every list endpoint is opt-in: without
+// ?limit it still returns the full array (legacy callers); with ?limit=N
+// (+ optional ?cursor=) it returns one keyset page - see utils/pagination.js.
+const byDateDesc = field => ({ sortValue: r => toTime(r[field]), idOf: r => r.id, order: 'desc', dateOf: r => r[field] });
+const RECORD_SEARCH = ['candidateName', 'jobTitle', 'client'];
+
 
 // Apply login protection to all /api routes
 router.use(requireLogin);
@@ -76,9 +84,21 @@ router.get('/jobs', async (req, res) => {
     const jobs =
       await atsService.getJobs();
 
-    res.json({
-      success: true,
-      data: jobs
+    // ?days=30 -> posted in the last N days (the Jobs page / dashboard window).
+    // ?status= and ?priority= narrow server-side; newest posting first.
+    const postedAt = j => j.postingDateRaw || j.createdAtRaw;
+    respond(req, res, jobs, {
+      sortValue: j => toTime(postedAt(j)),
+      idOf: j => j.id,
+      order: 'desc',
+      dateOf: postedAt,
+      // Job search matches the job title or job id (JobDiva ref like 26-06542, or internal id).
+      searchFields: ['id', 'atsId', 'title'],
+      filters: {
+        days: (j, v) => toTime(postedAt(j)) >= Date.now() - Number(v) * 86400000,
+        status: (j, v) => j.status === v,
+        priority: (j, v) => j.priorityLevel === v,
+      },
     });
 
   } catch (error) {
@@ -160,10 +180,20 @@ router.get('/jobs/:id/activity', async (req, res) => {
       });
     }
 
-    res.json({
-      success: true,
-      data: activity,
+    // Legacy: { jobId, postingDate, events }. Paged (?limit=): `events` is one
+    // cursor page (oldest first) and pageInfo rides alongside `data`.
+    if (req.query.limit === undefined && req.query.cursor === undefined) {
+      return res.json({ success: true, data: activity });
+    }
+    const out = {};
+    const sink = { json: body => Object.assign(out, body), status(code) { out.status = code; return this; } };
+    respond(req, sink, activity.events || [], {
+      sortValue: e => toTime(e.timestamp),
+      idOf: e => `${e.type}:${e.timestamp}:${e.to || ''}:${e.label || ''}`,
+      order: 'asc',
     });
+    if (out.success === false) return res.status(out.status || 400).json({ success: false, error: out.error });
+    res.json({ success: true, data: { ...activity, events: out.data }, pageInfo: out.pageInfo });
   } catch (error) {
     console.error('Error fetching job activity:', error.message);
     res.status(500).json({
@@ -200,9 +230,11 @@ router.get(
         await atsService.getCandidatesForJob(id);
 
 
-      res.json({
-        success: true,
-        data: candidates
+      respond(req, res, candidates, {
+        sortValue: c => String(c.name || '').toLowerCase(),
+        idOf: c => c.id,
+        order: 'asc',
+        searchFields: ['id', 'name', 'email', 'city', 'state', 'location', 'skills'],
       });
 
     } catch (error) {
@@ -241,8 +273,24 @@ router.get('/tasks', async (req, res) => {
   // Live: re-read this recruiter's jobs' notes now (jobs read <15s ago are skipped).
   try { await aiNotesService.syncKnownJobs(aiNotesService.jobsFor(who)); }
   catch (e) { console.warn('[tasks] live sync failed:', e.message); }
-  const data = aiNotesService.listTasks({ ...who, status: req.query.status, sinceDays: aiNotesService.WINDOW_DAYS });
-  res.json({ success: true, syncing: aiNotesService.isScanning(), data });
+  const data = aiNotesService.listTasks({ ...who, sinceDays: aiNotesService.WINDOW_DAYS });
+  const syncing = aiNotesService.isScanning();
+  // Legacy (no ?limit): optional ?status= filter, full array.
+  if (req.query.limit === undefined && req.query.cursor === undefined) {
+    const rows = req.query.status ? data.filter(t => t.status === req.query.status) : data;
+    return res.json({ success: true, syncing, data: rows });
+  }
+  // Paged: newest AI note first; ?status=pending|completed with facets.status
+  // carrying both tab counts.
+  const json = res.json.bind(res);
+  res.json = body => json({ ...body, syncing });
+  respond(req, res, data, {
+    sortValue: t => toTime(t.aiNoteAt),
+    idOf: t => `${t.jobId}:${t.candidateId}`,
+    order: 'desc',
+    searchFields: ['candidateName', 'jobRef', 'jobTitle', 'aiNote'],
+    facets: { status: t => t.status },
+  });
 });
 
 // ----------------------------------------------------------
@@ -292,11 +340,22 @@ router.get(
       }
 
 
-      // aiEngaged returns:
-      // { applicants: [...], candidates: [...] }
-      res.json({
-        success: true,
-        data: aiEngaged
+      // Legacy shape: { applicants: [...], candidates: [...] }.
+      // Paged (?limit=): one flat cursor page; ?category=applicant|candidate
+      // picks the tab and `facets.category` carries both tab counts.
+      if (req.query.limit === undefined && req.query.cursor === undefined) {
+        return res.json({ success: true, data: aiEngaged });
+      }
+      const rows = [
+        ...(aiEngaged.applicants || []).map(c => ({ ...c, _group: 'applicant' })),
+        ...(aiEngaged.candidates || []).map(c => ({ ...c, _group: 'candidate' })),
+      ];
+      respond(req, res, rows, {
+        sortValue: c => String(c.name || '').toLowerCase(),
+        idOf: c => `${c._group}:${c.id}`,
+        order: 'asc',
+        searchFields: ['name', 'email', 'aiStageLabel', 'aiStage'],
+        facets: { category: c => c._group },
       });
 
     } catch (error) {
@@ -324,7 +383,12 @@ router.get(
 router.get('/submittals', async (req, res) => {
   try {
     const submittals = await atsService.getRecruiterSubmittals();
-    res.json({ success: true, data: submittals });
+    respond(req, res, submittals, {
+      ...byDateDesc('dateRaw'),
+      searchFields: ['candidateName', 'jobTitle', 'client', 'stage', 'type'],
+      // ?type=internal|external; facets.type carries the per-type counts.
+      facets: { type: s => String(s.type || '').toLowerCase() },
+    });
   } catch (error) {
     console.error('Error fetching submittals:', error.message);
     res.status(500).json({ success: false, error: error.message });
@@ -341,7 +405,7 @@ router.get('/submittals', async (req, res) => {
 // ----------------------------------------------------------
 router.get('/interviews', async (req, res) => {
   try {
-    res.json({ success: true, data: await atsService.getInterviews() });
+    respond(req, res, await atsService.getInterviews(), { ...byDateDesc('dateRaw'), searchFields: RECORD_SEARCH });
   } catch (error) {
     console.error('Error fetching interviews:', error.message);
     res.status(500).json({ success: false, error: error.message });
@@ -350,7 +414,19 @@ router.get('/interviews', async (req, res) => {
 
 router.get('/starts', async (req, res) => {
   try {
-    res.json({ success: true, data: await atsService.getStarts() });
+    respond(req, res, await atsService.getStarts(), {
+      ...byDateDesc('dateRaw'),
+      searchFields: ['candidateName', 'jobTitle', 'client', 'location', 'status'],
+      // ?view= mirrors the Starts page's segment buttons.
+      filters: {
+        view: (r, v) => ({
+          active: r.status === 'Active',
+          bench: r.status === 'Ended',
+          ending30: !!r.endingSoon,
+          unapproved: !r.approved,
+        }[v] ?? true),
+      },
+    });
   } catch (error) {
     console.error('Error fetching starts:', error.message);
     res.status(500).json({ success: false, error: error.message });
@@ -359,7 +435,7 @@ router.get('/starts', async (req, res) => {
 
 router.get('/first-presentations', async (req, res) => {
   try {
-    res.json({ success: true, data: await atsService.getFirstPresentations() });
+    respond(req, res, await atsService.getFirstPresentations(), { ...byDateDesc('dateRaw'), searchFields: RECORD_SEARCH });
   } catch (error) {
     console.error('Error fetching first presentations:', error.message);
     res.status(500).json({ success: false, error: error.message });
@@ -368,9 +444,42 @@ router.get('/first-presentations', async (req, res) => {
 
 router.get('/my-primary-jobs', async (req, res) => {
   try {
-    res.json({ success: true, data: await atsService.getMyPrimaryJobRecords() });
+    respond(req, res, await atsService.getMyPrimaryJobRecords(), {
+      ...byDateDesc('dateRaw'),
+      searchFields: RECORD_SEARCH,
+      distinctOf: r => r.jobId, // ?distinct=1 -> pageInfo.distinctTotal (dashboard tile)
+    });
   } catch (error) {
     console.error('Error fetching primary job records:', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+
+// ----------------------------------------------------------
+// GET /api/candidates
+// Candidates page: one row per submitted candidate+job for this
+// recruiter. ?jobId= narrows to one job.
+// Frontend: public/js/pages/candidate.js
+// ----------------------------------------------------------
+router.get('/candidates', async (req, res) => {
+  try {
+    const rows = await atsService.getSubmittedCandidates();
+    respond(req, res, rows, {
+      ...byDateDesc('dateRaw'),
+      idOf: r => `${r.id}|${r.jobId}`,
+      searchFields: [
+        'id', 'name', 'email', 'currentTitle', 'currentCompany', 'candidateLocation',
+        'jobId', 'jobTitle', 'client',
+      ],
+      filters: { jobId: (r, v) => String(r.jobId) === String(v) },
+      // Options for the page's job dropdown, sent with the first page only.
+      meta: all => ({
+        jobs: [...new Map(all.map(r => [String(r.jobId), { id: r.jobId, title: r.jobTitle }])).values()],
+      }),
+    });
+  } catch (error) {
+    console.error('Error fetching candidates:', error.message);
     res.status(500).json({ success: false, error: error.message });
   }
 });

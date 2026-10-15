@@ -170,7 +170,7 @@ const NoteWritebackComponent = (() => {
           id="nm_submitBtn"
           disabled
         >
-          📤 Push Note to ATS
+          Push Note to ATS
         </button>
 
         <!-- Status message -->
@@ -483,7 +483,7 @@ const NoteWritebackComponent = (() => {
 
         showStatus(
           statusEl,
-          '⚠️ Note action type is required.',
+          'Note action type is required.',
           'warning'
         );
 
@@ -498,7 +498,7 @@ const NoteWritebackComponent = (() => {
 
         showStatus(
           statusEl,
-          '⚠️ Candidate alignment is required for Rec – Sense AI.',
+          'Candidate alignment is required for Rec – Sense AI.',
           'warning'
         );
 
@@ -510,7 +510,7 @@ const NoteWritebackComponent = (() => {
 
         showStatus(
           statusEl,
-          '⚠️ Note text is required.',
+          'Note text is required.',
           'warning'
         );
 
@@ -554,7 +554,7 @@ const NoteWritebackComponent = (() => {
       submitBtn.disabled = true;
 
       submitBtn.textContent =
-        '⏳ Sending to ATS...';
+        'Sending to ATS...';
 
       statusEl.style.display = 'none';
 
@@ -570,7 +570,7 @@ const NoteWritebackComponent = (() => {
         // ATS confirmed — show success
         showStatus(
           statusEl,
-          '✅ Note successfully pushed to ATS and confirmed.',
+          'Note successfully pushed to ATS and confirmed.',
           'success'
         );
 
@@ -592,7 +592,7 @@ const NoteWritebackComponent = (() => {
         submitBtn.disabled = true;
 
         submitBtn.textContent =
-          '📤 Push Note to ATS';
+          'Push Note to ATS';
 
         // Let the host page refresh its JobDiva notes without requiring a
         // browser reload. The callback is optional so this component remains
@@ -610,7 +610,7 @@ const NoteWritebackComponent = (() => {
 
         showStatus(
           statusEl,
-          '⚠️ ATS did not confirm. Note queued — retrying in 30 minutes.',
+          'ATS did not confirm. Note queued — retrying in 30 minutes.',
           'warning'
         );
 
@@ -619,14 +619,14 @@ const NoteWritebackComponent = (() => {
         submitBtn.disabled = false;
 
         submitBtn.textContent =
-          '📤 Push Note to ATS';
+          'Push Note to ATS';
 
 
       } else {
 
         showStatus(
           statusEl,
-          `❌ Failed: ${
+          `Failed: ${
             result.error || 'Unknown error'
           }. Please try again.`,
           'error'
@@ -635,7 +635,7 @@ const NoteWritebackComponent = (() => {
         submitBtn.disabled = false;
 
         submitBtn.textContent =
-          '📤 Push Note to ATS';
+          'Push Note to ATS';
       }
     };
   }
@@ -653,7 +653,7 @@ const NoteWritebackComponent = (() => {
     ) {
 
       window.addNotification(
-        '⚠️ Note Writeback Queued',
+        'Note Writeback Queued',
 
         `Note for ${payload.candidateName} (Job: ${payload.jobId}) ` +
         `queued. Retrying in 30 minutes.`,
@@ -681,7 +681,7 @@ const NoteWritebackComponent = (() => {
 
         window.addNotification &&
           window.addNotification(
-            '✅ Note Retry Succeeded',
+            'Note Retry Succeeded',
 
             `Note for ${payload.candidateName} pushed to ATS successfully.`,
 
@@ -697,7 +697,7 @@ const NoteWritebackComponent = (() => {
 
         window.addNotification &&
           window.addNotification(
-            '❌ Note Writeback Failed',
+            'Note Writeback Failed',
 
             `Note for ${payload.candidateName} could not reach ATS. Please resend.`,
 

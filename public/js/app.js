@@ -35,19 +35,19 @@ const AppState = {
 /* -----------------------------------------------------------
    NAVIGATION ITEMS
    Controls what appears in the sidebar.
-   icon: emoji shown in sidebar
+   icon: inline SVG shown in sidebar
    path: URL path this item navigates to
    label: text shown when sidebar is expanded
    badge: optional count shown next to label
 ----------------------------------------------------------- */
 const NAV_ITEMS = [
-  { id: 'dashboard', label: 'Dashboard',        icon: '📊', path: '/' },
-  { id: 'jobs',      label: 'Jobs',             icon: '💼', path: '/jobs' },
-  { id: 'candidates',label: 'Candidates',       icon: '👥', path: '/candidates' },
-  { id: 'tasks',     label: 'Tasks',            icon: '✅', path: '/tasks' },
-  { id: 'team',      label: 'Team Assignment',  icon: '👫', path: '/team' },
-  { id: 'clients',   label: 'Client Assignment',icon: '🏢', path: '/clients' },
-  { id: 'admin', label: 'Admin', icon: '⚙️', path: '/admin', roles: ['ADMIN'] },
+  { id: 'dashboard', label: 'Dashboard',        icon: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>', path: '/' },
+  { id: 'jobs',      label: 'Jobs',             icon: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2M3 13h18"/></svg>', path: '/jobs' },
+  { id: 'candidates',label: 'Candidates',       icon: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0113 0M16 4.6a3.5 3.5 0 010 6.8M18 14.5a6.5 6.5 0 013.5 5.5"/></svg>', path: '/candidates' },
+  { id: 'tasks',     label: 'Tasks',            icon: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M8 12.5l3 3 5-6"/></svg>', path: '/tasks' },
+  { id: 'team',      label: 'Team Assignment', disabled: true,  icon: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="7" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M2 20a6 6 0 0112 0M14 20a4.5 4.5 0 018 0"/></svg>', path: '/team' },
+  { id: 'clients',   label: 'Client Assignment', disabled: true,icon: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 21V4a1 1 0 011-1h9a1 1 0 011 1v17M15 9h4a1 1 0 011 1v11M2 21h20M8 7h3M8 11h3M8 15h3"/></svg>', path: '/clients' },
+  { id: 'admin', label: 'Admin', icon: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 01-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 010-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 014 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 010 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg>', path: '/admin', roles: ['ADMIN'] },
 ];
 
 /* -----------------------------------------------------------
@@ -164,11 +164,11 @@ async function renderPage() {
       await TasksPage.render(content);
 
     } else if (path === '/team') {
-      renderDummyPage(content, 'Team Assignment', '👫',
+      renderDummyPage(content, 'Team Assignment', '',
         'Team structure and recruiter assignments displayed here.');
 
     } else if (path === '/clients') {
-      renderDummyPage(content, 'Client Assignment', '🏢',
+      renderDummyPage(content, 'Client Assignment', '',
         'Client portfolio and engagement tracking displayed here.');
 
     } else {
@@ -194,15 +194,14 @@ function renderDummyPage(container, title, icon, note) {
   container.innerHTML = `
     <div class="page-header">
       <div>
-        <div class="page-title">${icon} ${title}</div>
+        <div class="page-title">${title}</div>
         <div class="page-subtitle">Demo — static view</div>
       </div>
     </div>
     <div class="detail-card">
-      <h3>${icon} ${title}</h3>
+      <h3>${title}</h3>
       <p style="color:var(--text-muted);font-size:13px;margin-bottom:16px">${note}</p>
       <div style="background:var(--surface-2);border-radius:8px;padding:20px;text-align:center;color:var(--text-muted)">
-        <div style="font-size:40px;margin-bottom:8px">${icon}</div>
         <div style="font-weight:600">Static Demo View</div>
         <div style="font-size:12px;margin-top:4px">
           This module will connect to live data in production.
@@ -242,7 +241,7 @@ function renderNav() {
     const isActive = AppState.currentPath === item.path ||
       (item.path !== '/' && AppState.currentPath.startsWith(item.path));
     return `
-      <div class="nav-item ${isActive ? 'active' : ''}" data-path="${item.path}">
+      <div class="nav-item ${isActive ? 'active' : ''}${item.disabled ? ' disabled' : ''}" data-path="${item.path}"${item.disabled ? ' aria-disabled="true" title="Coming soon"' : ''}>
         <span class="nav-icon">${item.icon}</span>
         <span class="nav-label">${item.label}</span>
       </div>`;
@@ -250,6 +249,7 @@ function renderNav() {
 
   // Attach click handlers
   nav.querySelectorAll('.nav-item').forEach(el => {
+    if (el.classList.contains('disabled')) return;
     el.onclick = () => navigate(el.dataset.path);
   });
 }
@@ -336,7 +336,7 @@ function renderNotifications() {
   body.innerHTML = AppState.notifications.map(n => `
     <div class="notif-item ${n.read ? '' : 'unread'} ${n.type === 'error' ? 'error' : ''}">
       <div class="notif-title">
-        ${n.type === 'error' ? '❌' : n.type === 'success' ? '✅' : 'ℹ️'} ${n.title}
+        ${n.type === 'error' ? '' : n.type === 'success' ? '' : ''} ${n.title}
       </div>
       <div class="notif-desc">${n.desc}</div>
       <div class="notif-time">${n.time}</div>
@@ -420,7 +420,7 @@ function renderGlobalSearchResults(data, query) {
 
   const jobItems = jobs.map(job => `
     <button class="global-search-result" data-search-type="job" data-search-id="${escapeGlobalSearch(job.id)}">
-      <span class="global-search-result-icon">💼</span>
+      <span class="global-search-result-icon">Job</span>
       <span class="global-search-result-text">
         <strong>${escapeGlobalSearch(job.title || 'Untitled Job')}</strong>
         <small>${escapeGlobalSearch(job.client || '—')} · Job ${escapeGlobalSearch(job.atsId || job.id || '—')}</small>
@@ -429,7 +429,7 @@ function renderGlobalSearchResults(data, query) {
 
   const candidateItems = candidates.map(candidate => `
     <button class="global-search-result" data-search-type="candidate" data-search-id="${escapeGlobalSearch(candidate.id)}">
-      <span class="global-search-result-icon">👤</span>
+      <span class="global-search-result-icon">Cand.</span>
       <span class="global-search-result-text">
         <strong>${escapeGlobalSearch(candidate.name || 'Unnamed Candidate')}</strong>
         <small>${escapeGlobalSearch(candidate.title || candidate.company || candidate.location || 'Candidate')}</small>

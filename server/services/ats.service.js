@@ -2099,6 +2099,29 @@ async function getRecruiterSubmittals() {
   return all.filter(s => s.stage !== 'Placed' && String(s.recruiterId) === myId);
 }
 
+// Candidates page: one row per candidate+job (newest submittal first), built
+// from this recruiter's submittals so it adds no JobDiva calls of its own.
+async function getSubmittedCandidates() {
+  const submittals = await getSubmittals();
+  const seen = new Set();
+  const rows = [];
+  for (const s of submittals) { // already newest-first
+    const key = `${s.candidateId}|${s.jobId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    rows.push({
+      id: s.candidateId, name: s.candidateName,
+      jobId: s.jobId, jobTitle: s.jobTitle, client: s.client, jobLocation: s.location,
+      stage: s.stage, submittedOn: s.submittalDate || s.date, type: s.type,
+      email: s.email, phone: s.phone, candidateLocation: s.candidateLocation,
+      currentTitle: s.currentTitle, currentCompany: s.currentCompany,
+      interviewDate: s.interviewDate, startDate: s.startDate,
+      dateRaw: s.dateRaw,
+    });
+  }
+  return rows;
+}
+
 // ----------------------------------------------------------
 // DASHBOARD DETAIL VIEWS — Interviews / Starts / First Presentation /
 // My Primary Jobs. All four are derived views over getSubmittals(), so
@@ -2522,6 +2545,7 @@ module.exports = {
   getJobActivity,
   getCandidatesForJob,
   getSubmittals,
+  getSubmittedCandidates,
   getInterviews,
   getStarts,
   getFirstPresentations,

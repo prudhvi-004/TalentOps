@@ -13,7 +13,7 @@
 
 const SubmittalsPage = (() => {
 
-  let allSubmittals = [];
+  let table = null;
   let activeRange = 'today';
   let activeType = 'all';
 
@@ -87,53 +87,47 @@ const SubmittalsPage = (() => {
       };
     });
 
-    document.getElementById('subSearch').oninput = applyFilters;
+    document.getElementById('subSearch').oninput = LoadMore.debounce(applyFilters, 250);
 
     await loadScript('/js/components/record-detail-shared.js');
-    const result = await ApiService.getSubmittals();
-    if (!result.success) {
-      document.getElementById('submittalsTableWrap').innerHTML = `
-        <div class="empty"><h3>Could not load submittals</h3><p>${result.error}</p></div>`;
-      return;
-    }
 
-    allSubmittals = result.data;
+    // Cursor-paginated: the server applies range/search/type and returns one
+    // page at a time; `facets.type` carries the counts beside the type buttons.
+    table = RecordDetailShared.pagedTable({
+      wrap: document.getElementById('submittalsTableWrap'),
+      headHtml: `<tr><th>CANDIDATE</th><th>TYPE</th><th>JOB</th><th>CLIENT</th><th>STAGE</th><th>DATE</th></tr>`,
+      rowHtml: s => `
+        <tr>
+          <td><a href="#" data-cand="${s.candidateId}" data-job="${s.jobId}" style="color:var(--primary);font-weight:600;text-decoration:none">${s.candidateName}</a></td>
+          <td><span class="chip ${s.type === 'External' ? 'chip-filled' : 'chip-open'}">${s.type.toUpperCase()}</span></td>
+          <td><a href="#" data-job-link="${s.jobId}" style="color:var(--primary);text-decoration:none">${s.jobTitle}</a></td>
+          <td>${s.client || ''}</td>
+          <td><span class="chip ${stageChipClass(s.stage)}">${s.stage.toUpperCase()}</span></td>
+          <td>${s.date || ''}</td>
+        </tr>`,
+      emptyHtml: `<div class="empty"><h3>No submittals match your filters</h3></div>`,
+      errorTitle: 'Could not load submittals',
+      fetchPage: params => ApiService.getSubmittals(params),
+      onPage: ({ pageInfo, facets }) => {
+        const counts = (facets && facets.type) || {};
+        document.querySelectorAll('[data-type]').forEach(b => {
+          b.textContent = `${b.dataset.label} (${counts[b.dataset.type] || 0})`;
+        });
+        const h = document.getElementById('subRecordsTitle');
+        if (h) h.textContent = `Submittals Records (${pageInfo.total})`;
+      },
+    });
     applyFilters();
   }
 
-  function inRange(dateRaw) {
-    if (activeRange === 'custom') {
-      // shared helper reads #dateFrom/#dateTo; this page uses sub* ids
-      if (!dateRaw) return false;
-      const d = new Date(dateRaw);
-      if (Number.isNaN(d.getTime())) return false;
-      const from = document.getElementById('subDateFrom').value;
-      const to = document.getElementById('subDateTo').value;
-      if (from && d < new Date(from)) return false;
-      if (to && d > new Date(new Date(to).getTime() + 24 * 60 * 60 * 1000 - 1)) return false;
-      return true;
-    }
-    return RecordDetailShared.inRange(dateRaw, activeRange);
-  }
-
   function applyFilters() {
-    const search = document.getElementById('subSearch').value.trim().toLowerCase();
-
-    const matchesSearch = s => {
-      const haystack = [s.candidateName, s.jobTitle, s.client, s.stage, s.type].map(v => String(v || '').toLowerCase());
-      return !search || haystack.some(v => v.includes(search));
-    };
-    const inScope = allSubmittals.filter(s => inRange(s.dateRaw) && matchesSearch(s));
-    const count = t => inScope.filter(s => t === 'all' || s.type.toLowerCase() === t).length;
-
-    // Counts beside each type button follow the active range/search.
-    document.querySelectorAll('[data-type]').forEach(b => {
-      b.textContent = `${b.dataset.label} (${count(b.dataset.type)})`;
+    if (!table) return;
+    table.load({
+      ...RecordDetailShared.rangeParams(activeRange,
+        document.getElementById('subDateFrom').value, document.getElementById('subDateTo').value),
+      q: document.getElementById('subSearch').value.trim(),
+      type: activeType,
     });
-    const h = document.getElementById('subRecordsTitle');
-    if (h) h.textContent = `Submittals Records (${count(activeType)})`;
-
-    renderTable(inScope.filter(s => activeType === 'all' || s.type.toLowerCase() === activeType));
   }
 
   function stageChipClass(stage) {
@@ -143,54 +137,6 @@ const SubmittalsPage = (() => {
       case 'Rejected':   return 'chip-closed';
       default:           return 'chip-medium'; // Screening
     }
-  }
-
-  function renderTable(rows) {
-    const wrap = document.getElementById('submittalsTableWrap');
-    if (!wrap) return;
-
-    if (rows.length === 0) {
-      wrap.innerHTML = `<div class="empty"><h3>No submittals match your filters</h3></div>`;
-      return;
-    }
-
-    wrap.innerHTML = `
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th>CANDIDATE</th>
-            <th>TYPE</th>
-            <th>JOB</th>
-            <th>CLIENT</th>
-            <th>STAGE</th>
-            <th>DATE</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${rows.map(s => `
-            <tr>
-              <td><a href="#" data-cand="${s.candidateId}" data-job="${s.jobId}" style="color:var(--primary);font-weight:600;text-decoration:none">${s.candidateName}</a></td>
-              <td><span class="chip ${s.type === 'External' ? 'chip-filled' : 'chip-open'}">${s.type.toUpperCase()}</span></td>
-              <td><a href="#" data-job-link="${s.jobId}" style="color:var(--primary);text-decoration:none">${s.jobTitle}</a></td>
-              <td>${s.client || ''}</td>
-              <td><span class="chip ${stageChipClass(s.stage)}">${s.stage.toUpperCase()}</span></td>
-              <td>${s.date || ''}</td>
-            </tr>`).join('')}
-        </tbody>
-      </table>`;
-
-    wrap.querySelectorAll('[data-cand]').forEach(el => {
-      el.onclick = (e) => {
-        e.preventDefault();
-        window.navigate(`/candidates/${el.dataset.cand}?source=pipeline&jobId=${el.dataset.job}`);
-      };
-    });
-    wrap.querySelectorAll('[data-job-link]').forEach(el => {
-      el.onclick = (e) => {
-        e.preventDefault();
-        window.navigate(`/jobs/${el.dataset.jobLink}`);
-      };
-    });
   }
 
   return { render };
