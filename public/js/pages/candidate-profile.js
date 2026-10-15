@@ -393,7 +393,7 @@ const CandidateProfilePage = (() => {
         const viewer = document.getElementById('resumeViewer');
         if (!viewer || !resume) return;
         viewer.innerHTML = resume.text
-          ? `<pre style="white-space:pre-wrap;font-family:'Courier New',monospace;font-size:12px;background:var(--surface-2);padding:14px;border-radius:8px;line-height:1.6;max-height:700px;overflow:auto">${escapeHtml(resume.text)}</pre>`
+          ? `<div style="max-height:700px;overflow:auto">${ResumeFormat.toHtml(resume.text)}</div>`
           : '<p style="color:var(--text-muted);font-size:12px">No text was returned for this resume.</p>';
       };
     });

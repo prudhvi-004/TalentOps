@@ -369,7 +369,8 @@ function toggleSidebar() {
   document.getElementById('mainArea')
     .classList.toggle('collapsed', AppState.sidebarCollapsed);
   const overlay = document.getElementById('sidebarOverlay');
-  overlay.classList.toggle('active', !AppState.sidebarCollapsed);
+  // The dimming overlay is for the mobile drawer only; never dim/blur on desktop.
+  overlay.classList.toggle('active', !AppState.sidebarCollapsed && window.matchMedia('(max-width: 800px)').matches);
 }
 
 /* -----------------------------------------------------------

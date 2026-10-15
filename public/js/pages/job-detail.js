@@ -674,7 +674,7 @@ const JobDetailPage = (() => {
             <div class="split-header">
               <span id="jdPanelTitle">Job Description</span>
               <button class="btn btn-sm btn-secondary" id="jdToggleBtn">
-                ◀ Minimize
+                Minimize
               </button>
             </div>
             <!-- JD content scrollable -->
@@ -688,6 +688,7 @@ const JobDetailPage = (() => {
             <div class="split-header">
               <span id="rightPanelTitle">Candidates</span>
               <div style="display:flex;gap:6px;align-items:center">
+                <button class="btn btn-sm btn-secondary" id="jdShowBtn" style="display:none">Show Job Description</button>
                 <input id="splitCandidateSearch" placeholder="Search candidates..."
                        style="width:190px;padding:5px 9px;font-size:11px"/>
                 <!-- All Candidates button -->
@@ -736,7 +737,11 @@ const JobDetailPage = (() => {
 
     // ── JD Minimize / Expand ──
     document.getElementById('jdToggleBtn').onclick = () => {
-      pageState.jdMinimized = !pageState.jdMinimized;
+      pageState.jdMinimized = true;
+      applyJDMinimize();
+    };
+    document.getElementById('jdShowBtn').onclick = () => {
+      pageState.jdMinimized = false;
       applyJDMinimize();
     };
 
@@ -787,26 +792,16 @@ const JobDetailPage = (() => {
      When expanded:  panel returns to full width with content.
   ----------------------------------------------------------- */
   function applyJDMinimize() {
-    const grid    = document.getElementById('splitViewGrid');
-    const body    = document.getElementById('jdPanelBody');
-    const title   = document.getElementById('jdPanelTitle');
-    const toggleBtn = document.getElementById('jdToggleBtn');
+    const grid      = document.getElementById('splitViewGrid');
+    const panel     = document.getElementById('jdPanel');
+    const showBtn   = document.getElementById('jdShowBtn');
+    const minimized = !!pageState.jdMinimized;
 
-    if (pageState.jdMinimized) {
-      // Collapse left panel
-      grid.style.gridTemplateColumns = '44px 1fr';
-      body.style.display    = 'none';
-      title.style.display   = 'none';
-      toggleBtn.textContent = '▶';
-      toggleBtn.title       = 'Expand Job Description';
-    } else {
-      // Restore left panel
-      grid.style.gridTemplateColumns = '1fr 1fr';
-      body.style.display    = '';
-      title.style.display   = '';
-      toggleBtn.textContent = '◀ Minimize';
-      toggleBtn.title       = 'Minimize Job Description';
-    }
+    // Minimized: the job description panel is hidden entirely and the
+    // candidate panel takes the full width; "Show Job Description" brings it back.
+    panel.style.display = minimized ? 'none' : '';
+    grid.style.gridTemplateColumns = minimized ? '1fr' : '1fr 1fr';
+    showBtn.style.display = minimized ? '' : 'none';
   }
 
   /* -----------------------------------------------------------
@@ -1002,7 +997,7 @@ const JobDetailPage = (() => {
         ${c.resume ? `
         <div class="detail-card">
           <h3>Resume</h3>
-          <pre style="white-space:pre-wrap;word-break:break-word;font-family:'Segoe UI',system-ui,-apple-system,Arial,sans-serif;font-size:14px;background:var(--surface-2);padding:16px 18px;border-radius:8px;line-height:1.65;margin:0">${escapeHtml(c.resume)}</pre>
+          ${ResumeFormat.toHtml(c.resume)}
         </div>` : ''}
 
         <div class="detail-card" id="splitNotesCard">
