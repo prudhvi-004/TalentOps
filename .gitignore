@@ -76,3 +76,5 @@ coverage/
 *.bak
 *.pid
 .cache/
+
+data/
